@@ -1,0 +1,5 @@
+rootProject.name = 'organic_maps_flutter'
+
+// Incluir el SDK de Organic Maps
+include ':sdk'
+project(':sdk').projectDir = new File(rootProject.projectDir, 'sdk')

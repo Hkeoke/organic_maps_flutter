@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="type.addr_interpolation">Adresa/Blok</string>
+    <string name="type.addr_interpolation.even">Adresa/Blok</string>
+    <string name="type.addr_interpolation.odd">Adresa/Blok</string>
+    <string name="type.aerialway">Vazdušni put</string>
+    <string name="type.aerialway.mixed_lift">Kombinovana žičara</string>
+</resources>
