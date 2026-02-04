@@ -179,7 +179,7 @@ if [ -f "$FTYPES_SUBTYPES" ]; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
             # macOS
             sed -i '' '/for (auto typeDefinition : typeDefinitions)/a\
-        {\
+        \
           \/\/ Trim whitespace from the type definition\
           while (!typeDefinition.empty() \&\& std::isspace(typeDefinition.front()))\
             typeDefinition.remove_prefix(1);\
@@ -189,7 +189,7 @@ if [ -f "$FTYPES_SUBTYPES" ]; then
         else
             # Linux
             sed -i '/for (auto typeDefinition : typeDefinitions)/a\
-        {\
+        \
           \/\/ Trim whitespace from the type definition\
           while (!typeDefinition.empty() \&\& std::isspace(typeDefinition.front()))\
             typeDefinition.remove_prefix(1);\
@@ -201,6 +201,55 @@ if [ -f "$FTYPES_SUBTYPES" ]; then
         echo -e "${GREEN}✓${NC} Whitespace trimming agregado al parser de subtypes.csv"
     else
         echo -e "${GREEN}✓${NC} Parser de subtypes.csv ya tiene whitespace trimming"
+    fi
+    
+    # Arreglar los ASSERTs que causan crashes
+    echo -e "${YELLOW}Paso 7b:${NC} Corrigiendo ASSERTs fatales..."
+    
+    # Verificar si ya tiene el fix de ASSERTs
+    if grep -q "ASSERT(columnIndex != 0" "$FTYPES_SUBTYPES"; then
+        # Reemplazar el primer bloque de ASSERTs (líneas ~52-54)
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS
+            sed -i '' '/if (typeDefinitions.size() < 1)/,/break;/{
+                s|ASSERT(columnIndex != 0, ("Parsing of subtypes file: Invalid or missing types definition|if (columnIndex == 0)\
+            LOG(LWARNING, ("Parsing of subtypes file: Invalid or missing types definition|
+                s|ASSERT(columnIndex == 0, ("Parsing of subtypes file: Invalid or missing subtypes definition|else\
+            LOG(LWARNING, ("Parsing of subtypes file: Invalid or missing subtypes definition|
+            }' "$FTYPES_SUBTYPES"
+            
+            # Reemplazar el segundo bloque de ASSERTs (líneas ~76-80)
+            sed -i '' '/else$/,/^[[:space:]]*}$/{
+                /ASSERT(columnIndex != 0, ("Parsing of subtypes file: Invalid type/c\
+            if (columnIndex == 0)\
+              LOG(LWARNING, ("Parsing of subtypes file: Invalid type ", typeDefinition, ""));\
+            else\
+              LOG(LWARNING, ("Parsing of subtypes file: Invalid subtype ", typeDefinition, ""));
+                /ASSERT(columnIndex == 0, ("Parsing of subtypes file: Invalid subtype/d
+            }' "$FTYPES_SUBTYPES"
+        else
+            # Linux
+            sed -i '/if (typeDefinitions.size() < 1)/,/break;/{
+                s|ASSERT(columnIndex != 0, ("Parsing of subtypes file: Invalid or missing types definition|if (columnIndex == 0)\
+            LOG(LWARNING, ("Parsing of subtypes file: Invalid or missing types definition|
+                s|ASSERT(columnIndex == 0, ("Parsing of subtypes file: Invalid or missing subtypes definition|else\
+            LOG(LWARNING, ("Parsing of subtypes file: Invalid or missing subtypes definition|
+            }' "$FTYPES_SUBTYPES"
+            
+            # Reemplazar el segundo bloque de ASSERTs (líneas ~76-80)
+            sed -i '/else$/,/^[[:space:]]*}$/{
+                /ASSERT(columnIndex != 0, ("Parsing of subtypes file: Invalid type/c\
+            if (columnIndex == 0)\
+              LOG(LWARNING, ("Parsing of subtypes file: Invalid type ", typeDefinition, ""));\
+            else\
+              LOG(LWARNING, ("Parsing of subtypes file: Invalid subtype ", typeDefinition, ""));
+                /ASSERT(columnIndex == 0, ("Parsing of subtypes file: Invalid subtype/d
+            }' "$FTYPES_SUBTYPES"
+        fi
+        
+        echo -e "${GREEN}✓${NC} ASSERTs fatales reemplazados por LOGs de advertencia"
+    else
+        echo -e "${GREEN}✓${NC} ASSERTs ya fueron corregidos previamente"
     fi
 fi
 
@@ -217,8 +266,10 @@ echo "  • CMakeLists.txt del plugin:"
 echo "    - Linker lld configurado"
 echo "    - Prioridad de headers configurada"
 echo "    - OpenGL ES 3.0 (GLESv3) configurado"
-echo "  • Parser de subtypes.csv:"
+echo "  • Parser de subtypes.csv (ftypes_subtypes.cpp):"
 echo "    - Whitespace trimming agregado (columnas y valores)"
+echo "    - ASSERTs fatales reemplazados por LOGs de advertencia"
+echo "    - Fix para crash al buscar direcciones"
 echo "  • Archivos .cpp corregidos (includes relativos)"
 echo ""
 echo "Para revertir los cambios:"

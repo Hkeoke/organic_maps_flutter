@@ -156,19 +156,25 @@ void OnResults(Results results, vector<search::ProductInfo> const & productInfo,
 {
   // Ignore results from obsolete searches.
   if (g_queryTimestamp > timestamp)
+  {
+    LOG(LINFO, ("⚠️ SearchEngine: Ignoring obsolete results (timestamp mismatch)"));
     return;
+  }
 
   JNIEnv * env = jni::GetEnv();
 
   if (!results.IsEndMarker() || results.IsEndedNormal())
   {
+    LOG(LINFO, ("🔍 SearchEngine: OnResults - Count:", results.GetCount()));
     g_results = std::move(results);
     jni::TScopedLocalObjectArrayRef jResults(env, BuildSearchResults(productInfo, hasPosition, lat, lon));
     env->CallVoidMethod(g_javaListener, g_updateResultsId, jResults.get(), timestamp);
+    LOG(LINFO, ("✅ SearchEngine: Results sent to Java layer"));
   }
 
   if (results.IsEndMarker())
   {
+    LOG(LINFO, ("🔍 SearchEngine: Search ended, IsEndedNormal:", results.IsEndedNormal()));
     env->CallVoidMethod(g_javaListener, g_endResultsId, timestamp);
     if (isMapAndTable && results.IsEndedNormal())
       g_framework->NativeFramework()->GetSearchAPI().PokeSearchInViewport();
@@ -270,14 +276,32 @@ JNIEXPORT jboolean JNICALL Java_app_organicmaps_sdk_search_SearchEngine_nativeRu
     JNIEnv * env, jclass clazz, jbyteArray bytes, jboolean isCategory, jstring lang, jlong timestamp,
     jboolean hasPosition, jdouble lat, jdouble lon)
 {
-  search::EverywhereSearchParams params{jni::ToNativeString(env, bytes),
-                                        jni::ToNativeString(env, lang),
+  std::string query = jni::ToNativeString(env, bytes);
+  std::string language = jni::ToNativeString(env, lang);
+  
+  LOG(LINFO, ("🔍 SearchEngine: nativeRunSearch called"));
+  LOG(LINFO, ("  Query:", query));
+  LOG(LINFO, ("  Language:", language));
+  LOG(LINFO, ("  IsCategory:", static_cast<bool>(isCategory)));
+  LOG(LINFO, ("  HasPosition:", static_cast<bool>(hasPosition)));
+  if (hasPosition) {
+    LOG(LINFO, ("  Position: lat=", lat, ", lon=", lon));
+  }
+  
+  search::EverywhereSearchParams params{query,
+                                        language,
                                         {},  // default timeout
                                         static_cast<bool>(isCategory),
                                         bind(&OnResults, _1, _2, timestamp, false, hasPosition, lat, lon)};
   bool const searchStarted = g_framework->NativeFramework()->GetSearchAPI().SearchEverywhere(std::move(params));
-  if (searchStarted)
+  
+  if (searchStarted) {
     g_queryTimestamp = timestamp;
+    LOG(LINFO, ("✅ SearchEngine: Search started successfully"));
+  } else {
+    LOG(LWARNING, ("❌ SearchEngine: Failed to start search"));
+  }
+  
   return searchStarted;
 }
 

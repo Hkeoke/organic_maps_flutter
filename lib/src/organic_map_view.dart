@@ -7,11 +7,15 @@ import 'organic_map_controller.dart';
 
 typedef MapCreatedCallback = void Function(OrganicMapController controller);
 typedef MyPositionModeChangedCallback = void Function(int mode, String modeName);
+typedef MapTapCallback = void Function(double latitude, double longitude);
+typedef RouteBuiltCallback = void Function(Map<String, dynamic> routeInfo);
 
 /// Widget que muestra el mapa de Organic Maps
 class OrganicMapView extends StatefulWidget {
   final MapCreatedCallback? onMapCreated;
   final MyPositionModeChangedCallback? onMyPositionModeChanged;
+  final MapTapCallback? onMapTap;
+  final RouteBuiltCallback? onRouteBuilt;
   final Set<Factory<OneSequenceGestureRecognizer>>? gestureRecognizers;
   final bool compassEnabled;
   final bool myLocationEnabled;
@@ -23,6 +27,8 @@ class OrganicMapView extends StatefulWidget {
     super.key,
     this.onMapCreated,
     this.onMyPositionModeChanged,
+    this.onMapTap,
+    this.onRouteBuilt,
     this.gestureRecognizers,
     this.compassEnabled = true,
     this.myLocationEnabled = true,
@@ -110,6 +116,13 @@ class _OrganicMapViewState extends State<OrganicMapView> {
         final mode = call.arguments['mode'] as int;
         final modeName = call.arguments['modeName'] as String;
         widget.onMyPositionModeChanged?.call(mode, modeName);
+      } else if (call.method == 'onMapTap') {
+        final lat = call.arguments['latitude'] as double;
+        final lon = call.arguments['longitude'] as double;
+        widget.onMapTap?.call(lat, lon);
+      } else if (call.method == 'onRouteBuilt') {
+        final routeInfo = Map<String, dynamic>.from(call.arguments as Map);
+        widget.onRouteBuilt?.call(routeInfo);
       }
       
       // Delegar otros eventos al controlador

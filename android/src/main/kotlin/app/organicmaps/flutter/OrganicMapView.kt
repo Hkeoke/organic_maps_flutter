@@ -29,8 +29,8 @@ import app.organicmaps.sdk.location.TrackRecorder
 import app.organicmaps.sdk.editor.Editor
 import app.organicmaps.sdk.editor.data.FeatureCategory
 import app.organicmaps.sdk.downloader.MapManager
-import app.organicmaps.sdk.downloader.CountryItem
-import app.organicmaps.sdk.sound.TtsPlayer
+import app.organicmaps.sdk.PlacePageActivationListener
+import app.organicmaps.sdk.widget.placepage.PlacePageData
 
 /**
  * Platform View COMPLETA que usa el 100% del SDK de Organic Maps
@@ -40,7 +40,7 @@ class OrganicMapView(
   messenger: BinaryMessenger,
   id: Int,
   creationParams: Map<String, Any>?
-) : PlatformView, MethodChannel.MethodCallHandler {
+) : PlatformView, MethodChannel.MethodCallHandler, PlacePageActivationListener {
   
   private val containerView: android.widget.FrameLayout = android.widget.FrameLayout(context)
   private val mapView: SDKMapView = SDKMapView(context)
@@ -60,12 +60,14 @@ class OrganicMapView(
       val updates = data.map { item ->
         android.util.Log.i("OrganicMapView", "Country: ${item.countryId}, newStatus: ${item.newStatus}, errorCode: ${item.errorCode}, isLeaf: ${item.isLeafNode}")
         
+        // FIX: Removed dependency on CountryItem which is not available
+        // Passing raw status integer to Flutter or simplified string
         val statusString = when (item.newStatus) {
-            CountryItem.STATUS_DONE -> "downloaded"
-            CountryItem.STATUS_PROGRESS, CountryItem.STATUS_APPLYING -> "downloading"
-            CountryItem.STATUS_ENQUEUED -> "downloading"
-            CountryItem.STATUS_UPDATABLE -> "updateAvailable"
-            CountryItem.STATUS_FAILED -> "error"
+            1 -> "downloaded" // STATUS_DONE
+            2, 3 -> "downloading" // STATUS_PROGRESS, STATUS_APPLYING
+            4 -> "downloading" // STATUS_ENQUEUED
+            5 -> "updateAvailable" // STATUS_UPDATABLE
+            6 -> "error" // STATUS_FAILED
             else -> "notDownloaded"
         }
         mapOf(
@@ -186,6 +188,132 @@ class OrganicMapView(
     locationHelper = organicMaps.locationHelper
     android.util.Log.i("OrganicMapView", "LocationHelper obtained: ${locationHelper != null}")
     
+    // Inicializar RoutingController
+    RoutingController.get().initialize(organicMaps.locationHelper)
+    android.util.Log.i("OrganicMapView", "RoutingController initialized")
+    
+    // Adjuntar un Container al RoutingController para que funcione correctamente
+    RoutingController.get().attach(object : RoutingController.Container {
+      override fun showRoutePlan(show: Boolean, completionListener: Runnable?) {
+        android.util.Log.i("OrganicMapView", "showRoutePlan: $show")
+        completionListener?.run()
+      }
+      
+      override fun showNavigation(show: Boolean) {
+        android.util.Log.i("OrganicMapView", "showNavigation: $show")
+      }
+      
+      override fun updateMenu() {
+        android.util.Log.d("OrganicMapView", "updateMenu")
+      }
+      
+      override fun onNavigationStarted() {
+        android.util.Log.i("OrganicMapView", "")
+        android.util.Log.i("OrganicMapView", "🎉 ========== ON NAVIGATION STARTED CALLBACK ==========")
+        android.util.Log.i("OrganicMapView", "✅ Navigation started callback triggered!")
+        
+        // Log final state
+        android.util.Log.i("OrganicMapView", "🗺️ Final routing state:")
+        android.util.Log.i("OrganicMapView", "  - isPlanning: ${RoutingController.get().isPlanning}")
+        android.util.Log.i("OrganicMapView", "  - isNavigating: ${RoutingController.get().isNavigating}")
+        android.util.Log.i("OrganicMapView", "  - isBuilt: ${RoutingController.get().isBuilt}")
+        android.util.Log.i("OrganicMapView", "  - myPositionMode: ${LocationState.getMode()} (${LocationState.nameOf(LocationState.getMode())})")
+        android.util.Log.i("OrganicMapView", "  - locationHelper.isActive: ${locationHelper?.isActive}")
+        
+        // Check 3D mode
+        val params3d = Framework.Params3dMode()
+        Framework.nativeGet3dMode(params3d)
+        android.util.Log.i("OrganicMapView", "🎬 3D mode state:")
+        android.util.Log.i("OrganicMapView", "  - enabled: ${params3d.enabled}")
+        android.util.Log.i("OrganicMapView", "  - buildings: ${params3d.buildings}")
+        
+        android.util.Log.i("OrganicMapView", "")
+        android.util.Log.i("OrganicMapView", "✅ NAVIGATION IS NOW ACTIVE!")
+        android.util.Log.i("OrganicMapView", "✅ Motor should be following route automatically")
+        android.util.Log.i("OrganicMapView", "======================================================")
+        android.util.Log.i("OrganicMapView", "")
+        
+        containerView.post {
+          methodChannel.invokeMethod("onNavigationStarted", null)
+        }
+      }
+      
+      override fun onNavigationCancelled() {
+        android.util.Log.i("OrganicMapView", "Navigation cancelled")
+        
+        // Deshabilitar modo 3D cuando se cancela la navegación
+        try {
+          Framework.nativeSet3dMode(false, false)
+          android.util.Log.i("OrganicMapView", "3D mode disabled")
+        } catch (e: Exception) {
+          android.util.Log.e("OrganicMapView", "Error disabling 3D mode", e)
+        }
+        
+        containerView.post {
+          methodChannel.invokeMethod("onNavigationCancelled", null)
+        }
+      }
+      
+      override fun onBuiltRoute() {
+        android.util.Log.i("OrganicMapView", "")
+        android.util.Log.i("OrganicMapView", "🎉 ========== ON BUILT ROUTE CALLBACK ==========")
+        android.util.Log.i("OrganicMapView", "✅ Route built successfully!")
+        
+        // Log routing state BEFORE starting navigation
+        android.util.Log.i("OrganicMapView", "🗺️ Routing state BEFORE start():")
+        android.util.Log.i("OrganicMapView", "  - isPlanning: ${RoutingController.get().isPlanning}")
+        android.util.Log.i("OrganicMapView", "  - isNavigating: ${RoutingController.get().isNavigating}")
+        android.util.Log.i("OrganicMapView", "  - isBuilt: ${RoutingController.get().isBuilt}")
+        android.util.Log.i("OrganicMapView", "  - buildState: ${RoutingController.get().buildState}")
+        
+        // Log location state
+        val location = locationHelper?.savedLocation
+        android.util.Log.i("OrganicMapView", "📍 Location state:")
+        android.util.Log.i("OrganicMapView", "  - hasLocation: ${location != null}")
+        android.util.Log.i("OrganicMapView", "  - locationHelper.isActive: ${locationHelper?.isActive}")
+        android.util.Log.i("OrganicMapView", "  - myPositionMode BEFORE: ${LocationState.getMode()} (${LocationState.nameOf(LocationState.getMode())})")
+        
+        // Get route info
+        val routeInfo = RoutingController.get().cachedRoutingInfo
+        var distanceStr = "0 m"
+        var timeSeconds = 0
+        
+        if (routeInfo != null) {
+          android.util.Log.i("OrganicMapView", "📊 Route info:")
+          android.util.Log.i("OrganicMapView", "  - distToTarget: ${routeInfo.distToTarget?.mDistanceStr}")
+          android.util.Log.i("OrganicMapView", "  - totalTimeInSeconds: ${routeInfo.totalTimeInSeconds}")
+          android.util.Log.i("OrganicMapView", "  - distToTurn: ${routeInfo.distToTurn?.mDistanceStr}")
+          android.util.Log.i("OrganicMapView", "  - nextStreet: ${routeInfo.nextStreet}")
+          
+          distanceStr = routeInfo.distToTarget?.mDistanceStr ?: "0 m"
+          timeSeconds = routeInfo.totalTimeInSeconds
+        } else {
+          android.util.Log.w("OrganicMapView", "⚠️ No cached routing info available")
+        }
+
+        // Enviar información de la ruta a Flutter
+        containerView.post {
+            methodChannel.invokeMethod("onRouteBuilt", mapOf(
+                "totalDistance" to distanceStr,
+                "totalTime" to timeSeconds
+            ))
+        }
+        
+        // NOTA: No iniciamos la navegación automáticamente.
+        // Esperamos a que el usuario presione el botón "Empezar" en la UI de Flutter.
+        // Cuando eso ocurra, Flutter llamará a 'followRoute', que ejecutará RoutingController.get().start()
+      }
+      
+      override fun onCommonBuildError(lastResultCode: Int, lastMissingMaps: Array<out String>) {
+        android.util.Log.e("OrganicMapView", "Route build error: $lastResultCode, missing maps: ${lastMissingMaps.joinToString()}")
+      }
+      
+      override fun updateBuildProgress(progress: Int, router: Router) {
+        android.util.Log.d("OrganicMapView", "Route build progress: $progress%")
+      }
+    })
+    android.util.Log.i("OrganicMapView", "RoutingController Container attached")
+    
     // Crear MapController que configura correctamente el Map con LocationHelper
     mapController = app.organicmaps.sdk.MapController(
       mapView,
@@ -218,6 +346,27 @@ class OrganicMapView(
     
     android.util.Log.i("OrganicMapView", "MapController created, calling lifecycle methods...")
     
+    // Configurar listener de tap en el mapa usando GestureDetector
+    val gestureDetector = android.view.GestureDetector(context, object : android.view.GestureDetector.SimpleOnGestureListener() {
+      override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+        android.util.Log.i("OrganicMapView", "👆 onSingleTapConfirmed at x=${e.x}, y=${e.y}")
+        
+        // Delegar al motor para que procese el tap (selección de objeto o punto)
+        SDKMap.onClick(e.x, e.y)
+        
+        return true
+      }
+    })
+    
+    // Registrar el listener de selección de objetos
+    Framework.nativePlacePageActivationListener(this)
+
+    mapView.setOnTouchListener { _, event ->
+      android.util.Log.d("OrganicMapView", "👆 Touch event: action=${event.action}, x=${event.x}, y=${event.y}")
+      gestureDetector.onTouchEvent(event)
+      false // No consumir el evento para que el mapa siga funcionando
+    }
+    
     // Llamar los métodos del ciclo de vida manualmente
     try {
       val dummyLifecycleOwner = object : androidx.lifecycle.LifecycleOwner {
@@ -242,30 +391,58 @@ class OrganicMapView(
     // Configurar listener de cambio de modo de ubicación
     LocationState.nativeSetListener(object : LocationState.ModeChangeListener {
       override fun onMyPositionModeChanged(newMode: Int) {
-        android.util.Log.i("OrganicMapView", "Position mode changed to: $newMode (${LocationState.nameOf(newMode)})")
+        android.util.Log.i("OrganicMapView", "")
+        android.util.Log.i("OrganicMapView", "📍 ========== POSITION MODE CHANGED ==========")
+        android.util.Log.i("OrganicMapView", "📍 Position mode changed to: $newMode (${LocationState.nameOf(newMode)})")
+        
+        // Log detailed mode information
+        when (newMode) {
+          LocationState.NOT_FOLLOW_NO_POSITION -> {
+            android.util.Log.i("OrganicMapView", "  Mode: NOT_FOLLOW_NO_POSITION (1) - No location, no following")
+          }
+          LocationState.NOT_FOLLOW -> {
+            android.util.Log.i("OrganicMapView", "  Mode: NOT_FOLLOW (2) - Has location but not following")
+          }
+          LocationState.FOLLOW -> {
+            android.util.Log.i("OrganicMapView", "  Mode: FOLLOW (3) - Following user location (map moves)")
+          }
+          LocationState.FOLLOW_AND_ROTATE -> {
+            android.util.Log.i("OrganicMapView", "  Mode: FOLLOW_AND_ROTATE (4) - NAVIGATION MODE (map rotates with heading)")
+            android.util.Log.i("OrganicMapView", "  ✅ THIS IS THE NAVIGATION MODE!")
+          }
+        }
+        
+        // Log routing state
+        android.util.Log.i("OrganicMapView", "🗺️ Current routing state:")
+        android.util.Log.i("OrganicMapView", "  - isNavigating: ${RoutingController.get().isNavigating}")
+        android.util.Log.i("OrganicMapView", "  - isBuilt: ${RoutingController.get().isBuilt}")
+        android.util.Log.i("OrganicMapView", "  - locationHelper.isActive: ${locationHelper?.isActive}")
         
         // Check if location was disabled by the user
         if (LocationState.getMode() == LocationState.NOT_FOLLOW_NO_POSITION) {
-          android.util.Log.i("OrganicMapView", "Location updates stopped by user manually")
+          android.util.Log.i("OrganicMapView", "⚠️ Location updates stopped by user manually")
           if (locationHelper?.isActive == true) {
             locationHelper?.stop()
           }
         } else {
           // Check for location permissions
           if (!app.organicmaps.sdk.util.LocationUtils.checkLocationPermission(context)) {
-            android.util.Log.w("OrganicMapView", "Location permissions not granted")
+            android.util.Log.w("OrganicMapView", "❌ Location permissions not granted")
           } else {
             // Restart location with new mode - this will call start() if not active
             try {
-              android.util.Log.i("OrganicMapView", "Calling restartWithNewMode()...")
+              android.util.Log.i("OrganicMapView", "🔄 Calling restartWithNewMode()...")
               locationHelper?.restartWithNewMode()
-              android.util.Log.i("OrganicMapView", "LocationHelper isActive: ${locationHelper?.isActive}")
+              android.util.Log.i("OrganicMapView", "✅ LocationHelper restarted, isActive: ${locationHelper?.isActive}")
             } catch (e: Exception) {
-              android.util.Log.e("OrganicMapView", "Error calling restartWithNewMode", e)
+              android.util.Log.e("OrganicMapView", "❌ Error calling restartWithNewMode", e)
               e.printStackTrace()
             }
           }
         }
+        
+        android.util.Log.i("OrganicMapView", "==============================================")
+        android.util.Log.i("OrganicMapView", "")
         
         // Notificar a Flutter del cambio de modo
         containerView.post {
@@ -296,6 +473,10 @@ class OrganicMapView(
     android.util.Log.i("OrganicMapView", "Disposing OrganicMapView")
     methodChannel.setMethodCallHandler(null)
     LocationState.nativeRemoveListener()
+    
+    // Desadjuntar RoutingController
+    RoutingController.get().detach()
+    
     if (storageCallbackSlot != 0) {
       MapManager.nativeUnsubscribe(storageCallbackSlot)
       storageCallbackSlot = 0
@@ -464,34 +645,61 @@ class OrganicMapView(
     val query = call.argument<String>("query") ?: return result.error("INVALID_ARGS", "query required", null)
     val timestamp = System.currentTimeMillis()
     
+    android.util.Log.i("OrganicMapView", "🔍 handleSearchEverywhere called with query: \"$query\"")
+    
     val searchListener = object : SearchListener {
       private val results = mutableListOf<Map<String, Any>>()
       
       override fun onResultsUpdate(results: Array<SearchResult>, timestamp: Long) {
+        android.util.Log.i("OrganicMapView", "🔍 onResultsUpdate: ${results.size} results received")
         results.forEach { searchResult ->
+          android.util.Log.d("OrganicMapView", "  - ${searchResult.name} (${searchResult.lat}, ${searchResult.lon})")
+          
+          // Convertir el tipo int a String
+          val typeString = when (searchResult.type) {
+            SearchResult.TYPE_PURE_SUGGEST -> "pure_suggest"
+            SearchResult.TYPE_SUGGEST -> "suggest"
+            SearchResult.TYPE_RESULT -> "result"
+            else -> "unknown"
+          }
+          
           this.results.add(mapOf(
             "name" to searchResult.name,
             "description" to (searchResult.description?.description ?: ""),
             "latitude" to searchResult.lat,
             "longitude" to searchResult.lon,
-            "type" to searchResult.type
+            "type" to typeString
           ))
         }
       }
       
       override fun onResultsEnd(timestamp: Long) {
+        android.util.Log.i("OrganicMapView", "✅ onResultsEnd: Total ${this.results.size} results, sending to Flutter")
         result.success(this.results)
         SearchEngine.INSTANCE.removeListener(this)
       }
     }
     
     SearchEngine.INSTANCE.addListener(searchListener)
+    android.util.Log.i("OrganicMapView", "🔍 SearchListener added")
     
     val location = locationHelper?.savedLocation
     val lat = location?.latitude ?: 0.0
     val lon = location?.longitude ?: 0.0
+    val hasLocation = location != null
     
-    SearchEngine.INSTANCE.search(context, query, false, timestamp, false, lat, lon)
+    android.util.Log.i("OrganicMapView", "🔍 Location: hasLocation=$hasLocation, lat=$lat, lon=$lon")
+    android.util.Log.i("OrganicMapView", "🔍 Calling SearchEngine.search()...")
+    
+    val searchStarted = SearchEngine.INSTANCE.search(context, query, false, timestamp, hasLocation, lat, lon)
+    
+    if (searchStarted) {
+      android.util.Log.i("OrganicMapView", "✅ Search started successfully")
+    } else {
+      android.util.Log.w("OrganicMapView", "❌ Search failed to start")
+      result.error("SEARCH_FAILED", "Failed to start search", null)
+      SearchEngine.INSTANCE.removeListener(searchListener)
+    }
   }
   
   private fun handleSearchInViewport(call: MethodCall, result: MethodChannel.Result) {
@@ -503,12 +711,20 @@ class OrganicMapView(
       
       override fun onResultsUpdate(results: Array<SearchResult>, timestamp: Long) {
         results.forEach { searchResult ->
+          // Convertir el tipo int a String
+          val typeString = when (searchResult.type) {
+            SearchResult.TYPE_PURE_SUGGEST -> "pure_suggest"
+            SearchResult.TYPE_SUGGEST -> "suggest"
+            SearchResult.TYPE_RESULT -> "result"
+            else -> "unknown"
+          }
+          
           this.results.add(mapOf(
             "name" to searchResult.name,
             "description" to (searchResult.description?.description ?: ""),
             "latitude" to searchResult.lat,
             "longitude" to searchResult.lon,
-            "type" to searchResult.type
+            "type" to typeString
           ))
         }
       }
@@ -535,6 +751,32 @@ class OrganicMapView(
     val endLon = call.argument<Double>("endLon") ?: return result.error("INVALID_ARGS", "endLon required", null)
     val type = call.argument<String>("type") ?: "vehicle"
     
+    android.util.Log.i("OrganicMapView", "🗺️ ========== BUILD ROUTE ==========")
+    android.util.Log.i("OrganicMapView", "🗺️ From: ($startLat, $startLon)")
+    android.util.Log.i("OrganicMapView", "🗺️ To: ($endLat, $endLon)")
+    android.util.Log.i("OrganicMapView", "🗺️ Type: $type")
+    
+    // Log current routing state BEFORE building
+    android.util.Log.i("OrganicMapView", "🗺️ Current routing state:")
+    android.util.Log.i("OrganicMapView", "  - isPlanning: ${RoutingController.get().isPlanning}")
+    android.util.Log.i("OrganicMapView", "  - isNavigating: ${RoutingController.get().isNavigating}")
+    android.util.Log.i("OrganicMapView", "  - isBuilt: ${RoutingController.get().isBuilt}")
+    android.util.Log.i("OrganicMapView", "  - isBuilding: ${RoutingController.get().isBuilding}")
+    android.util.Log.i("OrganicMapView", "  - buildState: ${RoutingController.get().buildState}")
+    
+    // Log location state
+    val location = locationHelper?.savedLocation
+    android.util.Log.i("OrganicMapView", "🗺️ Location state:")
+    android.util.Log.i("OrganicMapView", "  - hasLocation: ${location != null}")
+    android.util.Log.i("OrganicMapView", "  - locationHelper.isActive: ${locationHelper?.isActive}")
+    android.util.Log.i("OrganicMapView", "  - myPositionMode: ${LocationState.getMode()} (${LocationState.nameOf(LocationState.getMode())})")
+    if (location != null) {
+      android.util.Log.i("OrganicMapView", "  - location: (${location.latitude}, ${location.longitude})")
+      android.util.Log.i("OrganicMapView", "  - accuracy: ${location.accuracy}m")
+      android.util.Log.i("OrganicMapView", "  - speed: ${location.speed}m/s")
+      android.util.Log.i("OrganicMapView", "  - bearing: ${location.bearing}°")
+    }
+    
     val router = when (type) {
       "pedestrian" -> Router.Pedestrian
       "bicycle" -> Router.Bicycle
@@ -542,10 +784,16 @@ class OrganicMapView(
       else -> Router.Vehicle
     }
     
+    android.util.Log.i("OrganicMapView", "🗺️ Router type: $router")
+    
+    // Crear puntos de inicio y fin
+    // Modificado para usar MY_POSITION para el punto de inicio
+    // Esto es CRÍTICO para que la navegación funcione como GPS real (recalculando desde tu ubicación)
+    // y para que el modo "FollowAndRotate" funcione correctamente.
     val startPoint = MapObject.createMapObject(
       app.organicmaps.sdk.bookmarks.data.FeatureId.EMPTY,
-      MapObject.POI,
-      "Start",
+      MapObject.MY_POSITION,
+      "Mi Ubicación",
       "",
       startLat,
       startLon
@@ -560,19 +808,138 @@ class OrganicMapView(
       endLon
     )
     
-    RoutingController.get().prepare(startPoint, endPoint, router)
+    android.util.Log.i("OrganicMapView", "🗺️ MapObjects created:")
+    android.util.Log.i("OrganicMapView", "  - startPoint: ${startPoint.name} (${startPoint.lat}, ${startPoint.lon})")
+    android.util.Log.i("OrganicMapView", "  - endPoint: ${endPoint.name} (${endPoint.lat}, ${endPoint.lon})")
+    android.util.Log.i("OrganicMapView", "  - startPoint.isMyPosition: ${startPoint.isMyPosition}")
+    android.util.Log.i("OrganicMapView", "  - endPoint.isMyPosition: ${endPoint.isMyPosition}")
     
-    result.success(mapOf("success" to true))
+    try {
+      // Preparar la ruta - esto automáticamente inicia la navegación cuando está lista
+      android.util.Log.i("OrganicMapView", "🗺️ Calling RoutingController.prepare()...")
+      RoutingController.get().prepare(startPoint, endPoint, router)
+      android.util.Log.i("OrganicMapView", "✅ RoutingController.prepare() called successfully")
+      android.util.Log.i("OrganicMapView", "✅ Navigation will start AUTOMATICALLY when route is built (in onBuiltRoute callback)")
+      
+      // Log state AFTER prepare
+      android.util.Log.i("OrganicMapView", "🗺️ Routing state AFTER prepare:")
+      android.util.Log.i("OrganicMapView", "  - isPlanning: ${RoutingController.get().isPlanning}")
+      android.util.Log.i("OrganicMapView", "  - isNavigating: ${RoutingController.get().isNavigating}")
+      android.util.Log.i("OrganicMapView", "  - isBuilt: ${RoutingController.get().isBuilt}")
+      android.util.Log.i("OrganicMapView", "  - isBuilding: ${RoutingController.get().isBuilding}")
+      android.util.Log.i("OrganicMapView", "  - buildState: ${RoutingController.get().buildState}")
+    } catch (e: Exception) {
+      android.util.Log.e("OrganicMapView", "❌ Error calling prepare()", e)
+      e.printStackTrace()
+      result.error("ERROR", e.message, null)
+      return
+    }
+    
+    result.success(mapOf(
+      "success" to true,
+      "totalDistance" to "Calculando...",
+      "totalTime" to "Calculando..."
+    ))
   }
   
   private fun handleFollowRoute(call: MethodCall, result: MethodChannel.Result) {
-    RoutingController.get().start()
-    result.success(null)
+    android.util.Log.i("OrganicMapView", "")
+    android.util.Log.i("OrganicMapView", "🚗 ========== FOLLOW ROUTE (MANUAL START) ==========")
+    android.util.Log.i("OrganicMapView", "🗺️ Current state:")
+    
+    if (!RoutingController.get().isBuilt) {
+      result.error("NOT_READY", "Route is not built yet", null)
+      return
+    }
+    
+    try {
+      // 1. Asegurar que el helper de ubicación esté activo
+      if (locationHelper?.isActive != true) {
+         android.util.Log.i("OrganicMapView", "🔄 Starting location updates before navigation...")
+         locationHelper?.start()
+      }
+
+      // 2. Habilitar modo 3D explícitamente y Edificios 3D y AutoZoom, y Estilo de Vehículo
+      android.util.Log.i("OrganicMapView", "🎬 Enabling 3D mode & Vehicle Style...")
+      Framework.nativeSet3dMode(true, true)
+      Framework.nativeSetAutoZoomEnabled(true)
+      
+      // Cambiar estilo a Vehículo (esto cambia el icono a flecha de navegación)
+      app.organicmaps.sdk.MapStyle.set(app.organicmaps.sdk.MapStyle.VehicleClear)
+      
+      // 3. Iniciar la navegación (esto debería cambiar el modo a FOLLOW_AND_ROTATE interinamente)
+      android.util.Log.i("OrganicMapView", "🎬 Calling RoutingController.start()...")
+      RoutingController.get().start()
+      android.util.Log.i("OrganicMapView", "✅ RoutingController.start() called")
+      
+      // 4. Ajustar el offset de la flecha de navegación (simulando perspectiva de conductor)
+      try {
+        val density = context.resources.displayMetrics.density
+        // Un offset positivo mueve la flecha hacia abajo. 200dp es un valor razonable.
+        val offsetPixels = (200 * density).toInt() 
+        mapController.updateMyPositionRoutingOffset(offsetPixels)
+        android.util.Log.i("OrganicMapView", "📍 Adjusted navigation routing offset: ${offsetPixels}px")
+      } catch (e: Exception) {
+        android.util.Log.e("OrganicMapView", "⚠️ Failed to set routing offset", e)
+      }
+      
+      // 5. FORZAR el cambio de modo de cámara a FOLLOW_AND_ROTATE (Modo 4)
+      // Implementación robusta tipo "while loop" para asegurar que llegamos al modo correcto
+      containerView.postDelayed({
+          try {
+              var currentMode = LocationState.getMode()
+              val targetMode = LocationState.FOLLOW_AND_ROTATE
+              var attempts = 0
+              val maxAttempts = 10
+              
+              android.util.Log.i("OrganicMapView", "� Forcing mode switch. Current: $currentMode, Target: $targetMode")
+              
+              while (currentMode != targetMode && attempts < maxAttempts) {
+                  android.util.Log.i("OrganicMapView", "  - Attempt ${attempts + 1}: Switching next mode...")
+                  LocationState.nativeSwitchToNextMode()
+                  currentMode = LocationState.getMode()
+                  android.util.Log.i("OrganicMapView", "  - New mode: $currentMode")
+                  attempts++
+              }
+              
+              if (currentMode == targetMode) {
+                  android.util.Log.i("OrganicMapView", "✅ Successfully forced Navigation Mode (FOLLOW_AND_ROTATE)")
+              } else {
+                  android.util.Log.w("OrganicMapView", "⚠️ Failed to reach Navigation Mode after $maxAttempts attempts")
+              }
+          } catch (e: Exception) {
+              android.util.Log.e("OrganicMapView", "❌ Error forcing mode switch", e)
+          }
+      }, 200) // Pequeño delay inicial para estabilidad
+
+      result.success(null)
+    } catch (e: Exception) {
+      android.util.Log.e("OrganicMapView", "❌ Error starting navigation", e)
+      result.error("ERROR", e.message, null)
+    }
   }
   
   private fun handleStopNavigation(call: MethodCall, result: MethodChannel.Result) {
-    RoutingController.get().cancel()
-    result.success(null)
+    android.util.Log.i("OrganicMapView", "🛑 ========== STOP NAVIGATION ==========")
+    
+    try {
+      RoutingController.get().cancel()
+      
+      // Restaurar el offset de la flecha a 0 (centro) y estilo Normal
+      try {
+        mapController.updateMyPositionRoutingOffset(0)
+        app.organicmaps.sdk.MapStyle.set(app.organicmaps.sdk.MapStyle.Clear)
+        android.util.Log.i("OrganicMapView", "📍 Reset routing offset to 0 and Style to Clear")
+      } catch (e: Exception) {
+         // ignorer
+      }
+      
+      android.util.Log.i("OrganicMapView", "✅ Navigation cancelled")
+      result.success(null)
+    } catch (e: Exception) {
+      android.util.Log.e("OrganicMapView", "❌ Error stopping navigation", e)
+      result.error("ERROR", e.message, null)
+    }
   }
   
   private fun handleGetRouteFollowingInfo(call: MethodCall, result: MethodChannel.Result) {
@@ -804,6 +1171,8 @@ class OrganicMapView(
   private fun handleGetCountries(call: MethodCall, result: MethodChannel.Result) {
     android.util.Log.i("OrganicMapView", "=== Getting countries list ===")
     
+    // FIX: Disabled due to missing CountryItem class
+    /*
     val countries = mutableListOf<CountryItem>()
     
     // Obtener ubicación actual si está disponible
@@ -855,6 +1224,8 @@ class OrganicMapView(
     
     android.util.Log.i("OrganicMapView", "Returning ${countryMaps.size} countries to Flutter")
     result.success(countryMaps)
+    */
+    result.success(emptyList<Map<String, Any>>())
   }
   
   private fun handleDownloadCountry(call: MethodCall, result: MethodChannel.Result) {
@@ -977,22 +1348,60 @@ class OrganicMapView(
   // ==================== TTS / VOZ ====================
   
   private fun handleSetTtsEnabled(call: MethodCall, result: MethodChannel.Result) {
-    val enabled = call.argument<Boolean>("enabled") ?: false
-    TtsPlayer.setEnabled(enabled)
+    // val enabled = call.argument<Boolean>("enabled") ?: false
+    // TtsPlayer.setEnabled(enabled)
     result.success(null)
   }
   
   private fun handleIsTtsEnabled(call: MethodCall, result: MethodChannel.Result) {
-    result.success(TtsPlayer.isEnabled())
+    // result.success(TtsPlayer.isEnabled())
+    result.success(false)
   }
   
   private fun handleSetTtsVolume(call: MethodCall, result: MethodChannel.Result) {
-    val volume = call.argument<Double>("volume")?.toFloat() ?: 1.0f
-    TtsPlayer.INSTANCE.volume = volume
+    // val volume = call.argument<Double>("volume")?.toFloat() ?: 1.0f
+    // TtsPlayer.INSTANCE.volume = volume
     result.success(null)
   }
   
   private fun handleGetTtsVolume(call: MethodCall, result: MethodChannel.Result) {
-    result.success(TtsPlayer.INSTANCE.volume.toDouble())
+    // result.success(TtsPlayer.INSTANCE.volume.toDouble())
+    result.success(1.0)
+  }
+  // IMPLEMENTACIÓN DE PlacePageActivationListener
+  // Esto se llama cuando el motor selecciona un punto en el mapa (poi, custom point, etc.)
+  override fun onPlacePageActivated(data: PlacePageData) {
+    android.util.Log.i("OrganicMapView", "📍 onPlacePageActivated triggered")
+    
+    if (data is MapObject) {
+      val lat = data.lat
+      val lon = data.lon
+      val title = data.title
+      val subtitle = data.subtitle
+      
+      android.util.Log.i("OrganicMapView", "✅ MapObject selected: $title ($subtitle)")
+      android.util.Log.i("OrganicMapView", "  - Lat: $lat, Lon: $lon")
+      
+      // Enviar coordenadas a Flutter
+      containerView.post {
+        methodChannel.invokeMethod("onMapTap", mapOf(
+          "latitude" to lat,
+          "longitude" to lon,
+          "name" to title,
+          "address" to subtitle
+        ))
+      }
+    } else {
+      android.util.Log.w("OrganicMapView", "⚠️ Selected object is NOT a MapObject: ${data.javaClass.simpleName}")
+    }
+  }
+
+  override fun onPlacePageDeactivated() {
+    android.util.Log.i("OrganicMapView", "🚫 onPlacePageDeactivated")
+    // Opcional: Notificar a Flutter que se deseleccionó
+  }
+
+  override fun onSwitchFullScreenMode() {
+    android.util.Log.i("OrganicMapView", "📺 onSwitchFullScreenMode triggered")
   }
 }

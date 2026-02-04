@@ -22,6 +22,7 @@ public enum SearchEngine implements SearchListener, MapSearchListener,
   @Override
   public void onResultsUpdate(@NonNull final SearchResult[] results, final long timestamp)
   {
+    android.util.Log.i("SearchEngine", "🔍 onResultsUpdate: " + results.length + " results, timestamp=" + timestamp);
     UiThread.run(() -> {
       for (SearchListener listener : mListeners)
         listener.onResultsUpdate(results, timestamp);
@@ -31,6 +32,7 @@ public enum SearchEngine implements SearchListener, MapSearchListener,
   @Override
   public void onResultsEnd(final long timestamp)
   {
+    android.util.Log.i("SearchEngine", "✅ onResultsEnd: timestamp=" + timestamp);
     UiThread.run(() -> {
       for (SearchListener listener : mListeners)
         listener.onResultsEnd(timestamp);
@@ -107,8 +109,26 @@ public enum SearchEngine implements SearchListener, MapSearchListener,
   public boolean search(@NonNull Context context, @NonNull String query, boolean isCategory, long timestamp,
                         boolean hasLocation, double lat, double lon)
   {
-    return nativeRunSearch(query.getBytes(StandardCharsets.UTF_8), isCategory, Language.getKeyboardLocale(context),
+    android.util.Log.i("SearchEngine", "🔍 search() called");
+    android.util.Log.i("SearchEngine", "  Query: \"" + query + "\"");
+    android.util.Log.i("SearchEngine", "  IsCategory: " + isCategory);
+    android.util.Log.i("SearchEngine", "  HasLocation: " + hasLocation);
+    android.util.Log.i("SearchEngine", "  Location: lat=" + lat + ", lon=" + lon);
+    android.util.Log.i("SearchEngine", "  Timestamp: " + timestamp);
+    
+    String locale = Language.getKeyboardLocale(context);
+    android.util.Log.i("SearchEngine", "  Locale: " + locale);
+    
+    boolean started = nativeRunSearch(query.getBytes(StandardCharsets.UTF_8), isCategory, locale,
                            timestamp, hasLocation, lat, lon);
+    
+    if (started) {
+      android.util.Log.i("SearchEngine", "✅ nativeRunSearch returned true");
+    } else {
+      android.util.Log.w("SearchEngine", "❌ nativeRunSearch returned false");
+    }
+    
+    return started;
   }
 
   @MainThread

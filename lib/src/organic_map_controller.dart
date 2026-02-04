@@ -126,12 +126,26 @@ class OrganicMapController {
 
   /// Busca en todo el mapa
   Future<List<SearchResult>> searchEverywhere(String query) async {
-    final results = await _channel.invokeMethod<List>('searchEverywhere', {
-      'query': query,
-    });
-    return results!
-        .map((r) => SearchResult.fromMap(r.cast<String, dynamic>()))
-        .toList();
+    print('🔍 OrganicMapController: searchEverywhere llamado con query: "$query"');
+    try {
+      final results = await _channel.invokeMethod<List>('searchEverywhere', {
+        'query': query,
+      });
+      print('✅ OrganicMapController: Recibidos ${results?.length ?? 0} resultados del canal nativo');
+      if (results == null || results.isEmpty) {
+        print('⚠️ OrganicMapController: No hay resultados');
+        return [];
+      }
+      final searchResults = results
+          .map((r) => SearchResult.fromMap(r.cast<String, dynamic>()))
+          .toList();
+      print('✅ OrganicMapController: Convertidos ${searchResults.length} SearchResult');
+      return searchResults;
+    } catch (e, stackTrace) {
+      print('❌ OrganicMapController: Error en searchEverywhere: $e');
+      print('❌ StackTrace: $stackTrace');
+      rethrow;
+    }
   }
 
   /// Busca en el viewport actual
