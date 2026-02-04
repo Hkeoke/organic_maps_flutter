@@ -80,8 +80,8 @@ android {
     externalNativeBuild {
         cmake {
             version = '3.22.1+'
-            // Usar el SDK de CoMaps directamente
-            path '../comaps/CMakeLists.txt'
+            // Usar el SDK de CoMaps - ruta relativa desde android/
+            path '../../comaps/CMakeLists.txt'
         }
     }
 

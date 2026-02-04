@@ -37,8 +37,8 @@ migrate_working_dir/
 /android/.cxx
 /android/local.properties
 /android/captures/
-/android/gradlew
-/android/gradlew.bat
+#/android/gradlew
+#/android/gradlew.bat
 /android/key.properties
 *.jks
 *.keystore
