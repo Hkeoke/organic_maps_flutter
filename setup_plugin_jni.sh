@@ -139,6 +139,71 @@ endif()' "$PLUGIN_CMAKE"
     fi
 fi
 
+# Arreglar el parsing de subtypes.csv
+FTYPES_SUBTYPES="$COMAPS_DIR/libs/indexer/ftypes_subtypes.cpp"
+if [ -f "$FTYPES_SUBTYPES" ]; then
+    echo ""
+    echo -e "${YELLOW}Paso 7:${NC} Arreglando parsing de subtypes.csv..."
+    
+    # Verificar si ya tiene el fix de whitespace trimming
+    if ! grep -q "Trim whitespace from the column" "$FTYPES_SUBTYPES"; then
+        # Crear backup del archivo
+        cp "$FTYPES_SUBTYPES" "$FTYPES_SUBTYPES.backup.$(date +%Y%m%d_%H%M%S)"
+        
+        # Agregar trimming a nivel de columna
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS
+            sed -i '' '/string_view const column = columns\[columnIndex\];/c\
+        string_view column = columns[columnIndex];\
+        \
+        \/\/ Trim whitespace from the column\
+        while (!column.empty() \&\& std::isspace(column.front()))\
+          column.remove_prefix(1);\
+        while (!column.empty() \&\& std::isspace(column.back()))\
+          column.remove_suffix(1);
+' "$FTYPES_SUBTYPES"
+        else
+            # Linux
+            sed -i '/string_view const column = columns\[columnIndex\];/c\
+        string_view column = columns[columnIndex];\
+        \
+        \/\/ Trim whitespace from the column\
+        while (!column.empty() \&\& std::isspace(column.front()))\
+          column.remove_prefix(1);\
+        while (!column.empty() \&\& std::isspace(column.back()))\
+          column.remove_suffix(1);
+' "$FTYPES_SUBTYPES"
+        fi
+        
+        # Agregar trimming a nivel de type definition
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS
+            sed -i '' '/for (auto typeDefinition : typeDefinitions)/a\
+        {\
+          \/\/ Trim whitespace from the type definition\
+          while (!typeDefinition.empty() \&\& std::isspace(typeDefinition.front()))\
+            typeDefinition.remove_prefix(1);\
+          while (!typeDefinition.empty() \&\& std::isspace(typeDefinition.back()))\
+            typeDefinition.remove_suffix(1);
+' "$FTYPES_SUBTYPES"
+        else
+            # Linux
+            sed -i '/for (auto typeDefinition : typeDefinitions)/a\
+        {\
+          \/\/ Trim whitespace from the type definition\
+          while (!typeDefinition.empty() \&\& std::isspace(typeDefinition.front()))\
+            typeDefinition.remove_prefix(1);\
+          while (!typeDefinition.empty() \&\& std::isspace(typeDefinition.back()))\
+            typeDefinition.remove_suffix(1);
+' "$FTYPES_SUBTYPES"
+        fi
+        
+        echo -e "${GREEN}✓${NC} Whitespace trimming agregado al parser de subtypes.csv"
+    else
+        echo -e "${GREEN}✓${NC} Parser de subtypes.csv ya tiene whitespace trimming"
+    fi
+fi
+
 echo ""
 echo -e "${GREEN}✅ Configuración completada!${NC}"
 echo ""
@@ -152,6 +217,8 @@ echo "  • CMakeLists.txt del plugin:"
 echo "    - Linker lld configurado"
 echo "    - Prioridad de headers configurada"
 echo "    - OpenGL ES 3.0 (GLESv3) configurado"
+echo "  • Parser de subtypes.csv:"
+echo "    - Whitespace trimming agregado (columnas y valores)"
 echo "  • Archivos .cpp corregidos (includes relativos)"
 echo ""
 echo "Para revertir los cambios:"
