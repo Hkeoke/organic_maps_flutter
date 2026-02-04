@@ -1,4 +1,4 @@
-#include "android/sdk/src/main/cpp/app/organicmaps/sdk/core/jni_helper.hpp"
+#include "app/organicmaps/sdk/core/jni_helper.hpp"
 
 #include "geometry/mercator.hpp"
 

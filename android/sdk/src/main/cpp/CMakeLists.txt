@@ -4,7 +4,7 @@ project(organicmaps C CXX)
 
 set(SRC
   # JNI headers
-  ../../../../../private.h
+  ../../../../../../comaps/private.h
   app/organicmaps/sdk/core/jni_helper.hpp
   app/organicmaps/sdk/core/jni_java_methods.hpp
   app/organicmaps/sdk/core/logging.hpp
@@ -89,7 +89,13 @@ set(SRC
 
 omim_add_library(${PROJECT_NAME} SHARED ${SRC})
 
-target_include_directories(${PROJECT_NAME} PRIVATE .)
+# Ensure plugin headers take priority over comaps headers
+target_include_directories(${PROJECT_NAME} BEFORE PRIVATE .)
+
+# Use lld linker instead of gold for Android
+if (ANDROID)
+  target_link_options(${PROJECT_NAME} PRIVATE "-fuse-ld=lld")
+endif()
 
 target_link_libraries(${PROJECT_NAME}
   # CoMaps libs
@@ -132,7 +138,7 @@ target_link_libraries(${PROJECT_NAME}
   log
   android
   EGL
-  GLESv2
+  GLESv3  # OpenGL ES 3.0 for VAO and other functions
   atomic
   z
 )

@@ -100,7 +100,8 @@ android {
     cmake {
       version = '3.22.1+'
       buildStagingDirectory './nativeOutputs'
-      path '../../CMakeLists.txt'
+      // Ruta desde android/sdk/ hasta plugins/comaps/CMakeLists.txt
+      path '../../../comaps/CMakeLists.txt'
     }
   }
 

@@ -150,6 +150,7 @@ pch=true
 
 ## Arquitectura
 
+
 El plugin actúa como puente entre Flutter y las librerías C++ de CoMaps:
 
 ```
@@ -161,6 +162,16 @@ Android/iOS Native Code
     ↓ JNI/FFI
 CoMaps C++ Libraries
 ```
+### Construir SDK 
+# Desde el directorio del plugin
+cd plugins/organic_maps_flutter/android
+
+# Construir el SDK
+./gradlew :sdk:assembleDebug
+
+# O para release
+./gradlew :sdk:assembleRelease
+
 
 ## Más información
 
