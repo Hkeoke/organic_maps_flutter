@@ -68,7 +68,7 @@ else
     sed -i 's|set (CMAKE_INTERPROCEDURAL_OPTIMIZATION True)|# Disable LTO for Android to avoid linker issues\n    if (NOT PLATFORM_ANDROID)\n      set (CMAKE_INTERPROCEDURAL_OPTIMIZATION True)\n    endif()|g' "$COMAPS_CMAKE"
 fi
 
-echo -e "${GREEN}✓${NC} LTO deshabilitado para Android""
+echo -e "${GREEN}✓${NC} LTO deshabilitado para Android"
 
 # Verificar el cambio
 echo ""
