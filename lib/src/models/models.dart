@@ -6,3 +6,4 @@ export 'route_following_info.dart';
 export 'bookmark.dart';
 export 'country.dart';
 export 'exceptions.dart';
+export 'track_recording.dart';

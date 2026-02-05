@@ -173,6 +173,54 @@ cd plugins/organic_maps_flutter/android
 ./gradlew :sdk:assembleRelease
 
 
+## Funcionalidades
+
+### Grabación de Trayectos (Track Recording)
+
+El plugin permite grabar trayectos GPS mientras el usuario se mueve. Esta funcionalidad es útil para:
+- Registrar rutas de taxi
+- Crear tracks de actividades
+- Guardar recorridos para análisis posterior
+
+#### Uso básico
+
+```dart
+// Obtener el controlador del mapa
+OrganicMapController controller = ...;
+
+// Iniciar grabación
+final result = await controller.startTrackRecording();
+if (result.success) {
+  print('Grabación iniciada: ${result.isRecording}');
+}
+
+// Verificar estado
+final status = await controller.isTrackRecording();
+print('Grabando: ${status.isRecording}');
+print('Tiene datos: ${!status.isEmpty}');
+print('GPS activo: ${status.isGpsTrackerEnabled}');
+
+// Detener grabación
+final stopResult = await controller.stopTrackRecording();
+if (!stopResult.wasEmpty) {
+  // Guardar el track
+  final trackName = await controller.saveTrack('Mi Ruta');
+  print('Track guardado: $trackName');
+}
+```
+
+#### Requisitos
+
+- Permiso `ACCESS_FINE_LOCATION` debe estar concedido
+- GPS debe estar habilitado en el dispositivo
+- El mapa debe estar inicializado
+
+#### Notas importantes
+
+1. **GpsTracker**: El plugin habilita automáticamente el GpsTracker al iniciar la grabación
+2. **Ahorro de batería**: El GpsTracker se deshabilita automáticamente al detener la grabación (si no hay navegación activa)
+3. **Track vacío**: Si no hay datos GPS capturados, no se puede guardar el track
+
 ## Más información
 
 - [Documentación de CoMaps](../comaps/docs/INSTALL.md)

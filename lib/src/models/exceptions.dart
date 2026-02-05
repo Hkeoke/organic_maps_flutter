@@ -29,3 +29,8 @@ class RoutingException extends OrganicMapsException {
 class DownloadException extends OrganicMapsException {
   DownloadException(super.message, [super.originalError]);
 }
+
+/// Excepción de grabación de track
+class TrackRecordingException extends OrganicMapsException {
+  TrackRecordingException(super.message, [super.originalError]);
+}

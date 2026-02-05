@@ -249,28 +249,89 @@ class OrganicMapController {
 
   // ==================== TRACKING GPS ====================
 
-  /// Inicia la grabación de track
-  Future<void> startTrackRecording() async {
-    await _channel.invokeMethod('startTrackRecording');
+  /// Inicia la grabación de track.
+  /// Retorna un mapa con 'success' y 'isRecording'.
+  /// Lanza una excepción si hay un error de permisos.
+  Future<TrackRecordingResult> startTrackRecording() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('startTrackRecording');
+      if (result == null) {
+        return TrackRecordingResult(success: true, isRecording: true);
+      }
+      return TrackRecordingResult(
+        success: result['success'] == true,
+        isRecording: result['isRecording'] == true,
+      );
+    } catch (e) {
+      print('❌ Error starting track recording: $e');
+      rethrow;
+    }
   }
 
-  /// Detiene la grabación de track
-  Future<void> stopTrackRecording() async {
-    await _channel.invokeMethod('stopTrackRecording');
+  /// Detiene la grabación de track.
+  /// Retorna un mapa con 'success' y 'wasEmpty'.
+  Future<TrackRecordingResult> stopTrackRecording() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('stopTrackRecording');
+      if (result == null) {
+        return TrackRecordingResult(success: true, isRecording: false);
+      }
+      return TrackRecordingResult(
+        success: result['success'] == true,
+        isRecording: false,
+        wasEmpty: result['wasEmpty'] == true,
+      );
+    } catch (e) {
+      print('❌ Error stopping track recording: $e');
+      rethrow;
+    }
   }
 
-  /// Guarda el track actual
+  /// Guarda el track actual con el nombre especificado.
+  /// Lanza una excepción si el track está vacío.
   Future<String> saveTrack(String name) async {
-    final id = await _channel.invokeMethod<String>('saveTrack', {
-      'name': name,
-    });
-    return id!;
+    try {
+      final result = await _channel.invokeMethod<Map>('saveTrack', {
+        'name': name,
+      });
+      if (result == null) {
+        return name;
+      }
+      if (result['success'] == true) {
+        return result['name'] as String? ?? name;
+      }
+      throw TrackRecordingException('Failed to save track');
+    } catch (e) {
+      print('❌ Error saving track: $e');
+      rethrow;
+    }
   }
 
-  /// Verifica si está grabando
-  Future<bool> isTrackRecording() async {
-    final result = await _channel.invokeMethod<bool>('isTrackRecording');
-    return result ?? false;
+  /// Verifica el estado de la grabación de track.
+  /// Retorna información detallada sobre el estado de grabación.
+  Future<TrackRecordingStatus> isTrackRecording() async {
+    try {
+      final result = await _channel.invokeMethod<Map>('isTrackRecording');
+      if (result == null) {
+        return TrackRecordingStatus(
+          isRecording: false,
+          isEmpty: true,
+          isGpsTrackerEnabled: false,
+        );
+      }
+      return TrackRecordingStatus(
+        isRecording: result['isRecording'] == true,
+        isEmpty: result['isEmpty'] != false,
+        isGpsTrackerEnabled: result['isGpsTrackerEnabled'] == true,
+      );
+    } catch (e) {
+      print('❌ Error checking track recording status: $e');
+      return TrackRecordingStatus(
+        isRecording: false,
+        isEmpty: true,
+        isGpsTrackerEnabled: false,
+      );
+    }
   }
 
   // ==================== UBICACIÓN ====================

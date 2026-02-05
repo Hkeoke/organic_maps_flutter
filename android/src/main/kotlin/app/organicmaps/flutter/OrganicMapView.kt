@@ -29,6 +29,7 @@ import app.organicmaps.sdk.location.TrackRecorder
 import app.organicmaps.sdk.editor.Editor
 import app.organicmaps.sdk.editor.data.FeatureCategory
 import app.organicmaps.sdk.downloader.MapManager
+import app.organicmaps.sdk.downloader.CountryItem
 import app.organicmaps.sdk.PlacePageActivationListener
 import app.organicmaps.sdk.widget.placepage.PlacePageData
 
@@ -1017,24 +1018,107 @@ class OrganicMapView(
   }
   
   private fun handleStartTrackRecording(call: MethodCall, result: MethodChannel.Result) {
-    TrackRecorder.nativeStartTrackRecording()
-    result.success(null)
+    try {
+      android.util.Log.i("OrganicMapView", "🎬 Starting track recording...")
+      
+      // 1. Verificar permisos de ubicación
+      if (!app.organicmaps.sdk.util.LocationUtils.checkFineLocationPermission(context)) {
+        android.util.Log.e("OrganicMapView", "❌ Fine location permission not granted")
+        result.error("PERMISSION_DENIED", "Fine location permission is required for track recording", null)
+        return
+      }
+      
+      // 2. Asegurar que el LocationHelper esté activo
+      if (locationHelper?.isActive != true) {
+        android.util.Log.i("OrganicMapView", "🔄 Starting location updates for track recording...")
+        locationHelper?.start()
+      }
+      
+      // 3. Habilitar el GpsTracker (conectarlo al Framework)
+      android.util.Log.i("OrganicMapView", "🔄 Enabling GPS Tracker...")
+      TrackRecorder.nativeSetEnabled(true)
+      
+      // 4. Iniciar la grabación
+      android.util.Log.i("OrganicMapView", "🔄 Starting track recording...")
+      TrackRecorder.nativeStartTrackRecording()
+      
+      android.util.Log.i("OrganicMapView", "✅ Track recording started successfully")
+      result.success(mapOf(
+        "success" to true,
+        "isRecording" to TrackRecorder.nativeIsTrackRecordingEnabled()
+      ))
+    } catch (e: Exception) {
+      android.util.Log.e("OrganicMapView", "❌ Error starting track recording", e)
+      result.error("ERROR", e.message, null)
+    }
   }
   
   private fun handleStopTrackRecording(call: MethodCall, result: MethodChannel.Result) {
-    TrackRecorder.nativeStopTrackRecording()
-    result.success(null)
+    try {
+      android.util.Log.i("OrganicMapView", "🛑 Stopping track recording...")
+      
+      val wasEmpty = TrackRecorder.nativeIsTrackRecordingEmpty()
+      TrackRecorder.nativeStopTrackRecording()
+      
+      // Opcional: Deshabilitar el GpsTracker para ahorrar batería
+      // Solo si no estamos en navegación
+      if (!RoutingController.get().isNavigating) {
+        TrackRecorder.nativeSetEnabled(false)
+        android.util.Log.i("OrganicMapView", "📍 GPS Tracker disabled (not navigating)")
+      }
+      
+      android.util.Log.i("OrganicMapView", "✅ Track recording stopped. Was empty: $wasEmpty")
+      result.success(mapOf(
+        "success" to true,
+        "wasEmpty" to wasEmpty
+      ))
+    } catch (e: Exception) {
+      android.util.Log.e("OrganicMapView", "❌ Error stopping track recording", e)
+      result.error("ERROR", e.message, null)
+    }
   }
   
   private fun handleSaveTrack(call: MethodCall, result: MethodChannel.Result) {
-    val name = call.argument<String>("name") ?: "Track"
-    TrackRecorder.nativeSaveTrackRecordingWithName(name)
-    result.success("track_saved")
+    try {
+      val name = call.argument<String>("name") ?: "Track ${System.currentTimeMillis()}"
+      
+      android.util.Log.i("OrganicMapView", "💾 Saving track with name: $name")
+      
+      // Verificar si hay datos para guardar
+      if (TrackRecorder.nativeIsTrackRecordingEmpty()) {
+        android.util.Log.w("OrganicMapView", "⚠️ Track is empty, nothing to save")
+        result.error("EMPTY_TRACK", "No track data to save. The recording was empty.", null)
+        return
+      }
+      
+      TrackRecorder.nativeSaveTrackRecordingWithName(name)
+      
+      android.util.Log.i("OrganicMapView", "✅ Track saved: $name")
+      result.success(mapOf(
+        "success" to true,
+        "name" to name
+      ))
+    } catch (e: Exception) {
+      android.util.Log.e("OrganicMapView", "❌ Error saving track", e)
+      result.error("ERROR", e.message, null)
+    }
   }
   
   private fun handleIsTrackRecording(call: MethodCall, result: MethodChannel.Result) {
-    val isRecording = TrackRecorder.nativeIsTrackRecordingEnabled()
-    result.success(isRecording)
+    try {
+      val isRecording = TrackRecorder.nativeIsTrackRecordingEnabled()
+      val isEmpty = if (isRecording) TrackRecorder.nativeIsTrackRecordingEmpty() else true
+      val isGpsTrackerEnabled = TrackRecorder.nativeIsEnabled()
+      
+      result.success(mapOf(
+        "isRecording" to isRecording,
+        "isEmpty" to isEmpty,
+        "isGpsTrackerEnabled" to isGpsTrackerEnabled
+      ))
+    } catch (e: Exception) {
+      android.util.Log.e("OrganicMapView", "❌ Error checking track recording status", e)
+      result.error("ERROR", e.message, null)
+    }
   }
   
   private fun handleUpdateLocation(call: MethodCall, result: MethodChannel.Result) {
@@ -1171,8 +1255,6 @@ class OrganicMapView(
   private fun handleGetCountries(call: MethodCall, result: MethodChannel.Result) {
     android.util.Log.i("OrganicMapView", "=== Getting countries list ===")
     
-    // FIX: Disabled due to missing CountryItem class
-    /*
     val countries = mutableListOf<CountryItem>()
     
     // Obtener ubicación actual si está disponible
@@ -1224,8 +1306,6 @@ class OrganicMapView(
     
     android.util.Log.i("OrganicMapView", "Returning ${countryMaps.size} countries to Flutter")
     result.success(countryMaps)
-    */
-    result.success(emptyList<Map<String, Any>>())
   }
   
   private fun handleDownloadCountry(call: MethodCall, result: MethodChannel.Result) {
