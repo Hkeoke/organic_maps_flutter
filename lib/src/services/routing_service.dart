@@ -1,45 +1,66 @@
-import 'package:flutter/services.dart';
 import '../models/models.dart';
+import '../organic_map_controller.dart';
 
-/// Servicio para gestionar rutas y navegación
+/// Servicio de alto nivel para gestionar rutas y navegación.
+///
+/// Usa directamente un [OrganicMapController] en lugar de
+/// un MethodChannel separado, evitando problemas de sincronización.
+///
+/// Ejemplo:
+/// ```dart
+/// final routing = RoutingService(controller);
+///
+/// final route = await routing.calculateRoute(
+///   start: LatLng(40.4168, -3.7038),
+///   end: LatLng(41.3851, 2.1734),
+///   routerType: RouterType.vehicle,
+/// );
+///
+/// if (route.success) {
+///   await routing.startNavigation();
+/// }
+/// ```
 class RoutingService {
-  static const MethodChannel _channel =
-      MethodChannel('organic_maps_flutter/routing');
+  final OrganicMapController _controller;
 
-  /// Calcula una ruta
-  static Future<RouteInfo> calculateRoute({
+  RoutingService(this._controller);
+
+  /// Calcula una ruta entre dos puntos.
+  Future<RouteInfo> calculateRoute({
     required LatLng start,
     required LatLng end,
-    String routerType = 'vehicle',
+    RouterType routerType = RouterType.vehicle,
     List<LatLng>? waypoints,
   }) async {
-    final result = await _channel.invokeMethod<Map>('calculateRoute', {
-      'startLat': start.latitude,
-      'startLon': start.longitude,
-      'endLat': end.latitude,
-      'endLon': end.longitude,
-      'routerType': routerType,
-      'waypoints': waypoints?.map((w) => w.toMap()).toList(),
-    });
-
-    if (result == null) {
-      throw RoutingException('No se pudo calcular la ruta');
-    }
-
-    return RouteInfo.fromMap(result.cast<String, dynamic>());
+    return _controller.buildRoute(
+      start: start,
+      end: end,
+      type: routerType,
+      waypoints: waypoints,
+    );
   }
 
-  /// Habilita notificaciones de giro
-  static Future<void> enableTurnNotifications(bool enable) async {
-    await _channel.invokeMethod('enableTurnNotifications', {
-      'enable': enable,
-    });
+  /// Inicia la navegación (seguimiento de ruta).
+  Future<void> startNavigation() async {
+    await _controller.followRoute();
   }
 
-  /// Verifica si las notificaciones están habilitadas
-  static Future<bool> areTurnNotificationsEnabled() async {
-    final result =
-        await _channel.invokeMethod<bool>('areTurnNotificationsEnabled');
-    return result ?? false;
+  /// Detiene la navegación actual.
+  Future<void> stopNavigation() async {
+    await _controller.stopNavigation();
   }
+
+  /// Obtiene información de seguimiento de ruta en tiempo real.
+  Future<RouteFollowingInfo?> getFollowingInfo() async {
+    return _controller.getRouteFollowingInfo();
+  }
+
+  /// Stream de cuando se construye una ruta.
+  Stream<RouteInfo> get onRouteBuilt => _controller.onRouteBuilt;
+
+  /// Stream de cuando la navegación inicia.
+  Stream<void> get onNavigationStarted => _controller.onNavigationStarted;
+
+  /// Stream de cuando la navegación se cancela.
+  Stream<void> get onNavigationCancelled => _controller.onNavigationCancelled;
 }

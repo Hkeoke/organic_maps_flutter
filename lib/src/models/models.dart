@@ -1,5 +1,7 @@
+export 'enums.dart';
 export 'lat_lng.dart';
 export 'map_viewport.dart';
+export 'my_position_mode.dart';
 export 'search_result.dart';
 export 'route_info.dart';
 export 'route_following_info.dart';

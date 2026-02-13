@@ -1,4 +1,4 @@
-/// Representa un país o región descargable
+/// Representa un país o región descargable.
 class Country {
   final String id;
   final String name;
@@ -14,7 +14,7 @@ class Country {
   final String description;
   final bool present;
 
-  Country({
+  const Country({
     required this.id,
     required this.name,
     this.parentId,
@@ -69,23 +69,84 @@ class Country {
     };
   }
 
-  /// Retorna el tamaño formateado en MB o GB
+  /// Retorna el tamaño más relevante formateado en MB o GB.
   String get formattedSize {
-    // Usar totalSizeBytes si sizeBytes es 0 (para grupos y países sin descargar)
     final bytes = sizeBytes > 0 ? sizeBytes : totalSizeBytes;
+    if (bytes == 0) return '0 B';
     final sizeInMB = bytes / (1024 * 1024);
+    if (sizeInMB < 1) {
+      return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    }
     if (sizeInMB < 1024) {
       return '${sizeInMB.toStringAsFixed(1)} MB';
-    } else {
-      final sizeInGB = sizeInMB / 1024;
-      return '${sizeInGB.toStringAsFixed(2)} GB';
     }
+    final sizeInGB = sizeInMB / 1024;
+    return '${sizeInGB.toStringAsFixed(2)} GB';
   }
 
-  /// Indica si el país tiene hijos (es un grupo)
+  /// Indica si el país tiene hijos (es un grupo/continente).
   bool get isExpandable => totalChildCount > 1;
+
+  /// Indica si el país está completamente descargado.
+  bool get isDownloaded => status == CountryStatus.downloaded;
+
+  /// Indica si el país se está descargando.
+  bool get isDownloading => status == CountryStatus.downloading;
+
+  /// Indica si tiene actualización disponible.
+  bool get hasUpdate => status == CountryStatus.updateAvailable;
+
+  /// Progreso de descarga normalizado (0.0 a 1.0).
+  double get normalizedProgress => downloadProgress / 100.0;
+
+  Country copyWith({
+    String? id,
+    String? name,
+    String? parentId,
+    int? sizeBytes,
+    int? totalSizeBytes,
+    int? downloadedBytes,
+    int? bytesToDownload,
+    CountryStatus? status,
+    int? downloadProgress,
+    int? childCount,
+    int? totalChildCount,
+    String? description,
+    bool? present,
+  }) {
+    return Country(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      parentId: parentId ?? this.parentId,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      totalSizeBytes: totalSizeBytes ?? this.totalSizeBytes,
+      downloadedBytes: downloadedBytes ?? this.downloadedBytes,
+      bytesToDownload: bytesToDownload ?? this.bytesToDownload,
+      status: status ?? this.status,
+      downloadProgress: downloadProgress ?? this.downloadProgress,
+      childCount: childCount ?? this.childCount,
+      totalChildCount: totalChildCount ?? this.totalChildCount,
+      description: description ?? this.description,
+      present: present ?? this.present,
+    );
+  }
+
+  @override
+  String toString() =>
+      'Country(id: $id, name: $name, status: ${status.name}, size: $formattedSize)';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Country &&
+          runtimeType == other.runtimeType &&
+          id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
+/// Estado de descarga de un país/región.
 enum CountryStatus {
   notDownloaded,
   downloading,
@@ -93,4 +154,3 @@ enum CountryStatus {
   updateAvailable,
   error,
 }
-

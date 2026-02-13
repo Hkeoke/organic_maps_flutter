@@ -1,26 +1,33 @@
-import 'package:flutter/services.dart';
 import '../models/models.dart';
+import '../organic_map_controller.dart';
 
-/// Servicio para búsqueda en el mapa
+/// Servicio de alto nivel para búsqueda en el mapa.
+///
+/// Ejemplo:
+/// ```dart
+/// final search = SearchService(controller);
+/// final results = await search.searchEverywhere('restaurante');
+/// for (final result in results) {
+///   print('${result.name}: ${result.position}');
+/// }
+/// ```
 class SearchService {
-  static const MethodChannel _channel =
-      MethodChannel('organic_maps_flutter/search');
+  final OrganicMapController _controller;
 
-  /// Busca en todo el mapa
-  static Future<List<SearchResult>> searchEverywhere(String query) async {
-    final results = await _channel.invokeMethod<List>('searchEverywhere', {
-      'query': query,
-    });
+  SearchService(this._controller);
 
-    if (results == null) return [];
-
-    return results
-        .map((r) => SearchResult.fromMap(r.cast<String, dynamic>()))
-        .toList();
+  /// Busca en todo el mapa.
+  Future<List<SearchResult>> searchEverywhere(String query) async {
+    return _controller.searchEverywhere(query);
   }
 
-  /// Cancela todas las búsquedas
-  static Future<void> cancelAllSearches() async {
-    await _channel.invokeMethod('cancelAllSearches');
+  /// Busca en el viewport actual.
+  Future<List<SearchResult>> searchInViewport(String query) async {
+    return _controller.searchInViewport(query);
+  }
+
+  /// Cancela la búsqueda actual.
+  Future<void> cancel() async {
+    await _controller.cancelSearch();
   }
 }

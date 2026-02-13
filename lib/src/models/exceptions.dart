@@ -1,36 +1,52 @@
-/// Excepción base para errores de Organic Maps
+/// Excepción base para errores de Organic Maps.
 class OrganicMapsException implements Exception {
   final String message;
   final dynamic originalError;
+  final StackTrace? stackTrace;
 
-  OrganicMapsException(this.message, [this.originalError]);
+  const OrganicMapsException(this.message, [this.originalError, this.stackTrace]);
 
   @override
   String toString() => 'OrganicMapsException: $message';
 }
 
-/// Excepción cuando el framework no está inicializado
+/// Excepción cuando el framework no está inicializado.
 class NotInitializedException extends OrganicMapsException {
-  NotInitializedException()
+  const NotInitializedException()
       : super('El framework de Organic Maps no está inicializado');
 }
 
-/// Excepción de búsqueda
+/// Excepción de búsqueda.
 class SearchException extends OrganicMapsException {
-  SearchException(super.message, [super.originalError]);
+  const SearchException(super.message, [super.originalError, super.stackTrace]);
 }
 
-/// Excepción de routing
+/// Excepción de routing/navegación.
 class RoutingException extends OrganicMapsException {
-  RoutingException(super.message, [super.originalError]);
+  const RoutingException(super.message, [super.originalError, super.stackTrace]);
 }
 
-/// Excepción de descarga
+/// Excepción de descarga de mapas.
 class DownloadException extends OrganicMapsException {
-  DownloadException(super.message, [super.originalError]);
+  const DownloadException(super.message, [super.originalError, super.stackTrace]);
 }
 
-/// Excepción de grabación de track
+/// Excepción de grabación de track.
 class TrackRecordingException extends OrganicMapsException {
-  TrackRecordingException(super.message, [super.originalError]);
+  const TrackRecordingException(super.message, [super.originalError, super.stackTrace]);
+}
+
+/// Excepción de permisos de ubicación.
+class LocationPermissionException extends OrganicMapsException {
+  const LocationPermissionException([super.message = 'Permisos de ubicación no concedidos']);
+}
+
+/// Excepción de conexión de red.
+class NetworkException extends OrganicMapsException {
+  const NetworkException([super.message = 'Sin conexión a internet']);
+}
+
+/// Excepción de espacio insuficiente.
+class InsufficientStorageException extends OrganicMapsException {
+  const InsufficientStorageException([super.message = 'Espacio insuficiente para la descarga']);
 }

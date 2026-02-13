@@ -1,36 +1,52 @@
-import 'package:flutter/services.dart';
 import '../models/models.dart';
+import '../organic_map_controller.dart';
 
-/// Servicio para gestión de bookmarks
+/// Servicio de alto nivel para gestión de bookmarks.
+///
+/// Ejemplo:
+/// ```dart
+/// final bookmarks = BookmarkService(controller);
+///
+/// final id = await bookmarks.create(
+///   name: 'Mi lugar favorito',
+///   position: LatLng(40.4168, -3.7038),
+/// );
+///
+/// final allBookmarks = await bookmarks.getAll();
+/// ```
 class BookmarkService {
-  static const MethodChannel _channel =
-      MethodChannel('organic_maps_flutter/bookmarks');
+  final OrganicMapController _controller;
 
-  /// Crea un nuevo bookmark
-  static Future<String> createBookmark(Bookmark bookmark) async {
-    final id = await _channel.invokeMethod<String>('createBookmark', {
-      'name': bookmark.name,
-      'description': bookmark.description,
-      'latitude': bookmark.position.latitude,
-      'longitude': bookmark.position.longitude,
-      'categoryId': bookmark.categoryId,
-    });
+  BookmarkService(this._controller);
 
-    if (id == null) {
-      throw OrganicMapsException('No se pudo crear el bookmark');
-    }
-
-    return id;
+  /// Crea un nuevo bookmark.
+  Future<String> create({
+    required String name,
+    required LatLng position,
+    String? description,
+    String? categoryId,
+  }) async {
+    return _controller.createBookmark(
+      latitude: position.latitude,
+      longitude: position.longitude,
+      name: name,
+      description: description,
+      categoryId: categoryId,
+    );
   }
 
-  /// Obtiene todos los bookmarks
-  static Future<List<Bookmark>> getAllBookmarks() async {
-    final results = await _channel.invokeMethod<List>('getAllBookmarks');
+  /// Obtiene todos los bookmarks.
+  Future<List<Bookmark>> getAll() async {
+    return _controller.getBookmarks();
+  }
 
-    if (results == null) return [];
+  /// Elimina un bookmark por su ID.
+  Future<void> delete(String bookmarkId) async {
+    await _controller.deleteBookmark(bookmarkId);
+  }
 
-    return results
-        .map((r) => Bookmark.fromMap(r.cast<String, dynamic>()))
-        .toList();
+  /// Muestra un bookmark en el mapa.
+  Future<void> show(String bookmarkId) async {
+    await _controller.showBookmark(bookmarkId);
   }
 }

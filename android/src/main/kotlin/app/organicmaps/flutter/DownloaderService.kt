@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -16,38 +17,36 @@ import app.organicmaps.sdk.downloader.CountryItem
 import app.organicmaps.sdk.downloader.MapManager
 
 /**
- * Foreground service for map downloads.
- * Required for Android to allow background network operations.
+ * Foreground service para descargas de mapas offline.
+ *
+ * Requerido por Android para operaciones de red en segundo plano.
+ * Muestra una notificación persistente con el progreso de descarga
+ * y se auto-detiene cuando la descarga finaliza.
  */
 class DownloaderService : Service(), MapManager.StorageCallback {
-  
+
   companion object {
     private const val TAG = "DownloaderService"
     private const val NOTIFICATION_ID = 12345
     private const val CHANNEL_ID = "map_downloads"
-    
+
     fun startForegroundService(context: Context) {
-      android.util.Log.i(TAG, "Starting foreground service")
-      ContextCompat.startForegroundService(context, Intent(context, DownloaderService::class.java))
+      ContextCompat.startForegroundService(
+        context, Intent(context, DownloaderService::class.java)
+      )
     }
   }
-  
+
   private var subscriptionSlot: Int = 0
-  
+
   override fun onCreate() {
     super.onCreate()
-    android.util.Log.i(TAG, "onCreate")
-    
-    // Subscribe to download events
     subscriptionSlot = MapManager.nativeSubscribe(this)
-    android.util.Log.i(TAG, "Subscribed to MapManager with slot: $subscriptionSlot")
   }
-  
+
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    android.util.Log.i(TAG, "onStartCommand - Downloading: ${MapManager.nativeIsDownloading()}")
-    
     val notification = buildNotification()
-    
+
     try {
       val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
@@ -55,25 +54,22 @@ class DownloaderService : Service(), MapManager.StorageCallback {
         0
       }
       ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
-      android.util.Log.i(TAG, "Service promoted to foreground")
     } catch (e: Exception) {
-      android.util.Log.e(TAG, "Failed to promote service to foreground", e)
+      Log.e(TAG, "Failed to promote to foreground", e)
     }
-    
+
     return START_NOT_STICKY
   }
-  
+
   override fun onBind(intent: Intent?): IBinder? = null
-  
+
   override fun onStatusChanged(data: MutableList<MapManager.StorageCallbackData>) {
     val isDownloading = MapManager.nativeIsDownloading()
     val hasFailed = data.any { it.isLeafNode && it.newStatus == CountryItem.STATUS_FAILED }
-    
-    android.util.Log.i(TAG, "onStatusChanged - Downloading: $isDownloading, Failed: $hasFailed")
-    
+
     if (!isDownloading) {
       if (hasFailed) {
-        // Detach service from notification to keep it after service stops
+        // Mantener notificación visible tras error
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
           stopForeground(STOP_FOREGROUND_DETACH)
         } else {
@@ -84,42 +80,28 @@ class DownloaderService : Service(), MapManager.StorageCallback {
       stopSelf()
     }
   }
-  
+
   override fun onProgress(countryId: String, bytesDownloaded: Long, bytesTotal: Long) {
     val progress = if (bytesTotal > 0) (bytesDownloaded * 100 / bytesTotal).toInt() else 0
-    android.util.Log.d(TAG, "onProgress - $countryId: $progress% ($bytesDownloaded / $bytesTotal)")
-    
-    // Update notification with progress
     val notification = buildNotification(countryId, progress)
-    val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    notificationManager.notify(NOTIFICATION_ID, notification)
+    val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    nm.notify(NOTIFICATION_ID, notification)
   }
-  
+
   override fun onDestroy() {
     super.onDestroy()
-    android.util.Log.i(TAG, "onDestroy")
-    
     if (subscriptionSlot != 0) {
       MapManager.nativeUnsubscribe(subscriptionSlot)
       subscriptionSlot = 0
     }
   }
-  
+
   private fun buildNotification(countryName: String? = null, progress: Int = 0): Notification {
-    createNotificationChannel()
-    
-    val title = if (countryName != null) {
-      "Downloading $countryName"
-    } else {
-      "Downloading maps"
-    }
-    
-    val text = if (progress > 0) {
-      "$progress%"
-    } else {
-      "Preparing download..."
-    }
-    
+    ensureNotificationChannel()
+
+    val title = countryName?.let { "Descargando $it" } ?: "Descargando mapas"
+    val text = if (progress > 0) "$progress%" else "Preparando descarga..."
+
     return NotificationCompat.Builder(this, CHANNEL_ID)
       .setContentTitle(title)
       .setContentText(text)
@@ -129,19 +111,19 @@ class DownloaderService : Service(), MapManager.StorageCallback {
       .setPriority(NotificationCompat.PRIORITY_LOW)
       .build()
   }
-  
-  private fun createNotificationChannel() {
+
+  private fun ensureNotificationChannel() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       val channel = NotificationChannel(
         CHANNEL_ID,
-        "Map Downloads",
+        "Descargas de mapas",
         NotificationManager.IMPORTANCE_LOW
       ).apply {
-        description = "Shows progress of map downloads"
+        description = "Progreso de descarga de mapas offline"
       }
-      
-      val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-      notificationManager.createNotificationChannel(channel)
+
+      (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+        .createNotificationChannel(channel)
     }
   }
 }

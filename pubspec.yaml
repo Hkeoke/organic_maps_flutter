@@ -1,6 +1,6 @@
 name: organic_maps_flutter
-description: "A new Flutter plugin project."
-version: 0.0.1
+description: "Plugin de mapas offline para Flutter basado en Organic Maps. Proporciona mapas vectoriales, navegación, búsqueda y gestión de descargas."
+version: 0.1.0
 
 
 environment:

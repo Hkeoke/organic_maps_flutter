@@ -3,25 +3,82 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'models/models.dart';
 import 'organic_map_controller.dart';
 
+/// Callback cuando el mapa está listo y el controller disponible.
 typedef MapCreatedCallback = void Function(OrganicMapController controller);
-typedef MyPositionModeChangedCallback = void Function(int mode, String modeName);
-typedef MapTapCallback = void Function(double latitude, double longitude);
-typedef RouteBuiltCallback = void Function(Map<String, dynamic> routeInfo);
 
-/// Widget que muestra el mapa de Organic Maps
+/// Callback cuando cambia el modo de posición del usuario.
+typedef MyPositionModeChangedCallback = void Function(
+    MyPositionMode mode, String modeName);
+
+/// Callback cuando el usuario toca el mapa.
+typedef MapTapCallback = void Function(MapTapInfo tapInfo);
+
+/// Callback cuando se construye una ruta.
+typedef RouteBuiltCallback = void Function(RouteInfo routeInfo);
+
+/// Callback cuando la navegación inicia.
+typedef VoidCallback2 = void Function();
+
+/// Widget que muestra el mapa de Organic Maps.
+///
+/// Ejemplo de uso:
+/// ```dart
+/// OrganicMapView(
+///   onMapCreated: (controller) {
+///     _mapController = controller;
+///     controller.setCenter(
+///       latitude: 40.4168,
+///       longitude: -3.7038,
+///       zoom: 12,
+///     );
+///   },
+///   onMyPositionModeChanged: (mode, modeName) {
+///     setState(() => _currentMode = mode);
+///   },
+///   onMapTap: (tapInfo) {
+///     print('Tap en: ${tapInfo.latitude}, ${tapInfo.longitude}');
+///   },
+/// )
+/// ```
 class OrganicMapView extends StatefulWidget {
+  /// Callback cuando el mapa está listo.
   final MapCreatedCallback? onMapCreated;
+
+  /// Callback cuando cambia el modo de posición.
   final MyPositionModeChangedCallback? onMyPositionModeChanged;
+
+  /// Callback cuando el usuario toca el mapa.
   final MapTapCallback? onMapTap;
+
+  /// Callback cuando se construye una ruta exitosamente.
   final RouteBuiltCallback? onRouteBuilt;
+
+  /// Callback cuando la navegación inicia.
+  final VoidCallback? onNavigationStarted;
+
+  /// Callback cuando la navegación se cancela.
+  final VoidCallback? onNavigationCancelled;
+
+  /// Reconocedores de gestos personalizados.
   final Set<Factory<OneSequenceGestureRecognizer>>? gestureRecognizers;
+
+  /// Si la brújula está habilitada.
   final bool compassEnabled;
+
+  /// Si la ubicación del usuario está habilitada.
   final bool myLocationEnabled;
+
+  /// Si la capa de tráfico está habilitada al inicio.
   final bool trafficEnabled;
+
+  /// Si el transporte público está habilitado al inicio.
   final bool transitEnabled;
-  final MapTheme theme;
+
+  /// Estilo visual del mapa.
+  final MapStyle theme;
 
   const OrganicMapView({
     super.key,
@@ -29,12 +86,14 @@ class OrganicMapView extends StatefulWidget {
     this.onMyPositionModeChanged,
     this.onMapTap,
     this.onRouteBuilt,
+    this.onNavigationStarted,
+    this.onNavigationCancelled,
     this.gestureRecognizers,
     this.compassEnabled = true,
     this.myLocationEnabled = true,
     this.trafficEnabled = false,
     this.transitEnabled = false,
-    this.theme = MapTheme.defaultLight,
+    this.theme = MapStyle.defaultLight,
   });
 
   @override
@@ -48,13 +107,10 @@ class _OrganicMapViewState extends State<OrganicMapView> {
 
   @override
   Widget build(BuildContext context) {
-    // Configuración de reconocedores de gestos
-    final gestureRecognizers = widget.gestureRecognizers ?? 
-      <Factory<OneSequenceGestureRecognizer>>{};
-    
+    final gestureRecognizers = widget.gestureRecognizers ??
+        <Factory<OneSequenceGestureRecognizer>>{};
+
     if (defaultTargetPlatform == TargetPlatform.android) {
-      // Usar PlatformViewLink con AndroidViewSurface para Hybrid Composition
-      // Esto permite que los widgets de Flutter se rendericen encima del mapa
       return PlatformViewLink(
         viewType: 'organic_maps_flutter/map_view',
         surfaceFactory: (context, controller) {
@@ -87,7 +143,12 @@ class _OrganicMapViewState extends State<OrganicMapView> {
       );
     }
 
-    return Text('Plataforma no soportada: $defaultTargetPlatform');
+    return Center(
+      child: Text(
+        'Plataforma no soportada: $defaultTargetPlatform',
+        style: const TextStyle(color: Colors.red),
+      ),
+    );
   }
 
   Map<String, dynamic> _buildCreationParams() {
@@ -103,33 +164,49 @@ class _OrganicMapViewState extends State<OrganicMapView> {
   void _onPlatformViewCreated(int id) {
     _controller = OrganicMapController.internal(id);
     _methodChannel = MethodChannel('organic_maps_flutter/map_$id');
-    
-    // Escuchar eventos desde el lado nativo
+
     _methodChannel!.setMethodCallHandler((call) async {
-      if (call.method == 'onMapReady') {
-        if (!_isMapReady && mounted) {
-          _isMapReady = true;
-          // AHORA sí llamar al callback - el Framework está listo
-          widget.onMapCreated?.call(_controller!);
-        }
-      } else if (call.method == 'onMyPositionModeChanged') {
-        final mode = call.arguments['mode'] as int;
-        final modeName = call.arguments['modeName'] as String;
-        widget.onMyPositionModeChanged?.call(mode, modeName);
-      } else if (call.method == 'onMapTap') {
-        final lat = call.arguments['latitude'] as double;
-        final lon = call.arguments['longitude'] as double;
-        widget.onMapTap?.call(lat, lon);
-      } else if (call.method == 'onRouteBuilt') {
-        final routeInfo = Map<String, dynamic>.from(call.arguments as Map);
-        widget.onRouteBuilt?.call(routeInfo);
+      switch (call.method) {
+        case 'onMapReady':
+          if (!_isMapReady && mounted) {
+            _isMapReady = true;
+            widget.onMapCreated?.call(_controller!);
+          }
+          break;
+
+        case 'onMyPositionModeChanged':
+          final mode = (call.arguments['mode'] as num).toInt();
+          final modeName = call.arguments['modeName'] as String;
+          final positionMode = MyPositionMode.fromValue(mode);
+          widget.onMyPositionModeChanged?.call(positionMode, modeName);
+          break;
+
+        case 'onMapTap':
+          final tapInfo = MapTapInfo.fromMap(
+              Map<String, dynamic>.from(call.arguments as Map));
+          widget.onMapTap?.call(tapInfo);
+          break;
+
+        case 'onRouteBuilt':
+          final routeData =
+              Map<String, dynamic>.from(call.arguments as Map);
+          final routeInfo =
+              RouteInfo.fromMap({...routeData, 'success': true});
+          widget.onRouteBuilt?.call(routeInfo);
+          break;
+
+        case 'onNavigationStarted':
+          widget.onNavigationStarted?.call();
+          break;
+
+        case 'onNavigationCancelled':
+          widget.onNavigationCancelled?.call();
+          break;
       }
-      
-      // Delegar otros eventos al controlador
+
+      // Delegar al controlador para que actualice sus streams internos.
       _controller?.handleMethodCall(call);
     });
-    
-    // NO llamar onMapCreated aquí - esperar a que el Framework esté listo
   }
 
   @override
@@ -138,13 +215,4 @@ class _OrganicMapViewState extends State<OrganicMapView> {
     _methodChannel?.setMethodCallHandler(null);
     super.dispose();
   }
-}
-
-enum MapTheme {
-  defaultLight,
-  defaultDark,
-  outdoorsLight,
-  outdoorsDark,
-  vehicleLight,
-  vehicleDark,
 }
