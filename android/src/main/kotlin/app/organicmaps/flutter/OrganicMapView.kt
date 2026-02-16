@@ -211,9 +211,15 @@ class OrganicMapView(
 
       override fun onBuiltRoute() {
         val routeInfo = RoutingController.get().cachedRoutingInfo
+        val distanceMeters = routeInfo?.distToTarget?.mDistance ?: 0.0
+        val durationSeconds = routeInfo?.totalTimeInSeconds ?: 0
+        val distanceFormatted = routeInfo?.distToTarget?.mDistanceStr ?: "0 m"
+        
         val data = mapOf(
-          "totalDistance" to (routeInfo?.distToTarget?.mDistanceStr ?: "0 m"),
-          "totalTime" to (routeInfo?.totalTimeInSeconds ?: 0)
+          "distanceMeters" to distanceMeters,
+          "durationSeconds" to durationSeconds,
+          "totalDistance" to distanceFormatted,
+          "totalTime" to durationSeconds
         )
         postToFlutter("onRouteBuilt", data)
       }
