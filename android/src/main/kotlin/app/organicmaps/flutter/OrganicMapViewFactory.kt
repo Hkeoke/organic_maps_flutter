@@ -13,6 +13,6 @@ class OrganicMapViewFactory(
   
   override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
     val creationParams = args as? Map<String, Any>
-    return OrganicMapView(this.context, messenger, viewId, creationParams)
+    return OrganicMapView(context, messenger, viewId, creationParams)
   }
 }

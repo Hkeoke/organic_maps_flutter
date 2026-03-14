@@ -660,6 +660,19 @@ class OrganicMapController {
         .toList();
   }
 
+  /// Busca un país/región en todo el árbol de mapas.
+  ///
+  /// A diferencia de [getCountries] que solo retorna items del nivel raíz,
+  /// este método busca recursivamente en todo el árbol (continentes → países → regiones).
+  /// Retorna `null` si no se encuentra.
+  Future<Country?> findCountry(String query) async {
+    final result = await _channel.invokeMethod<Map>('findCountry', {
+      'query': query,
+    });
+    if (result == null) return null;
+    return Country.fromMap(result.cast<String, dynamic>());
+  }
+
   /// Descarga un país/región.
   ///
   /// Retorna información sobre si se requirió confirmación.

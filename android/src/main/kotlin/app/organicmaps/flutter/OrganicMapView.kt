@@ -46,7 +46,11 @@ class OrganicMapView(
   messenger: BinaryMessenger,
   id: Int,
   creationParams: Map<String, Any>?
-) : PlatformView, MethodChannel.MethodCallHandler, PlacePageActivationListener {
+) : PlatformView, MethodChannel.MethodCallHandler, PlacePageActivationListener, androidx.lifecycle.LifecycleOwner {
+
+  private val lifecycleRegistry = androidx.lifecycle.LifecycleRegistry(this)
+  override val lifecycle: androidx.lifecycle.Lifecycle
+    get() = lifecycleRegistry
 
   companion object {
     private const val TAG = "OrganicMapView"
@@ -98,6 +102,7 @@ class OrganicMapView(
   // ==================== INICIALIZACIÓN ====================
 
   init {
+    lifecycleRegistry.currentState = androidx.lifecycle.Lifecycle.State.CREATED
     methodChannel.setMethodCallHandler(this)
 
     synchronized(initLock) {
@@ -114,20 +119,20 @@ class OrganicMapView(
     containerView.post {
       try {
         // ConnectionState DEBE inicializarse ANTES de OrganicMaps
-        app.organicmaps.sdk.util.ConnectionState.INSTANCE.initialize(context)
+        app.organicmaps.sdk.util.ConnectionState.INSTANCE.initialize(context.applicationContext)
 
         val locationProviderFactory = object : app.organicmaps.sdk.location.LocationProviderFactory {
-          override fun isGoogleLocationAvailable(context: Context): Boolean = false
+          override fun isGoogleLocationAvailable(ctx: Context): Boolean = false
           override fun getProvider(
-            context: Context,
+            ctx: Context,
             listener: app.organicmaps.sdk.location.BaseLocationProvider.Listener
           ): app.organicmaps.sdk.location.BaseLocationProvider {
-            return app.organicmaps.sdk.location.AndroidNativeProvider(context, listener)
+            return app.organicmaps.sdk.location.AndroidNativeProvider(ctx.applicationContext, listener)
           }
         }
 
         organicMaps = app.organicmaps.sdk.OrganicMaps(
-          context,
+          context.applicationContext,
           "flutter",
           context.packageName,
           1,
@@ -286,14 +291,10 @@ class OrganicMapView(
 
   private fun startLifecycle() {
     safeExecute {
-      val lifecycleOwner = object : androidx.lifecycle.LifecycleOwner {
-        override val lifecycle: androidx.lifecycle.Lifecycle
-          get() = androidx.lifecycle.LifecycleRegistry(this).apply {
-            currentState = androidx.lifecycle.Lifecycle.State.RESUMED
-          }
-      }
-      mapController.onStart(lifecycleOwner)
-      mapController.onResume(lifecycleOwner)
+      lifecycleRegistry.currentState = androidx.lifecycle.Lifecycle.State.STARTED
+      mapController.onStart(this)
+      lifecycleRegistry.currentState = androidx.lifecycle.Lifecycle.State.RESUMED
+      mapController.onResume(this)
     }
   }
 
@@ -312,18 +313,16 @@ class OrganicMapView(
     }
 
     safeExecute {
-      val lifecycleOwner = object : androidx.lifecycle.LifecycleOwner {
-        override val lifecycle: androidx.lifecycle.Lifecycle
-          get() = androidx.lifecycle.LifecycleRegistry(this).apply {
-            currentState = androidx.lifecycle.Lifecycle.State.DESTROYED
-          }
-      }
-      mapController.onPause(lifecycleOwner)
-      mapController.onStop(lifecycleOwner)
-      mapController.onDestroy(lifecycleOwner)
+      lifecycleRegistry.currentState = androidx.lifecycle.Lifecycle.State.STARTED
+      mapController.onPause(this)
+      lifecycleRegistry.currentState = androidx.lifecycle.Lifecycle.State.CREATED
+      mapController.onStop(this)
+      lifecycleRegistry.currentState = androidx.lifecycle.Lifecycle.State.DESTROYED
+      mapController.onDestroy(this)
     }
 
     locationHelper?.stop()
+    containerView.removeView(mapView)
   }
 
   // ==================== METHOD CALL HANDLER ====================
@@ -398,6 +397,7 @@ class OrganicMapView(
 
         // Gestión de mapas
         "getCountries" -> handleGetCountries(result)
+        "findCountry" -> handleFindCountry(call, result)
         "downloadCountry" -> handleDownloadCountry(call, result)
         "deleteCountry" -> handleDeleteCountry(call, result)
         "cancelDownload" -> handleCancelDownload(call, result)
@@ -880,6 +880,66 @@ class OrganicMapView(
     }
 
     result.success(countryMaps)
+  }
+
+  /**
+   * Busca un país/región en todo el árbol de mapas mediante BFS.
+   * Necesario porque nativeListItems(null) solo retorna items del nivel raíz (continentes),
+   * y países como Cuba están anidados bajo regiones como "North America".
+   */
+  private fun handleFindCountry(call: MethodCall, result: MethodChannel.Result) {
+    val query = call.requireString("query", result) ?: return
+    val queryLower = query.lowercase()
+    val location = locationHelper?.savedLocation
+
+    // BFS a través del árbol de mapas
+    val queue = ArrayDeque<String?>()
+    queue.add(null) // empezar desde la raíz
+
+    while (queue.isNotEmpty()) {
+      val parentId = queue.removeFirst()
+      val items = mutableListOf<CountryItem>()
+
+      MapManager.nativeListItems(
+        parentId,
+        location?.latitude ?: 0.0,
+        location?.longitude ?: 0.0,
+        location != null,
+        false,
+        items
+      )
+
+      for (item in items) {
+        item.update()
+        if (item.id.lowercase().contains(queryLower) ||
+            item.name.lowercase().contains(queryLower)) {
+          // Encontrado — retornar inmediatamente
+          result.success(mapOf(
+            "id" to item.id,
+            "name" to item.name,
+            "parentId" to item.directParentId,
+            "sizeBytes" to item.size,
+            "totalSizeBytes" to item.totalSize,
+            "downloadedBytes" to item.downloadedBytes,
+            "bytesToDownload" to item.bytesToDownload,
+            "status" to mapStatusToString(item.status),
+            "downloadProgress" to item.progress.toInt(),
+            "childCount" to item.childCount,
+            "totalChildCount" to item.totalChildCount,
+            "description" to (item.description ?: ""),
+            "present" to item.present
+          ))
+          return
+        }
+        // Si tiene hijos, agregar a la cola para seguir buscando
+        if (item.totalChildCount > 1) {
+          queue.add(item.id)
+        }
+      }
+    }
+
+    // No encontrado
+    result.success(null)
   }
 
   private fun handleDownloadCountry(call: MethodCall, result: MethodChannel.Result) {

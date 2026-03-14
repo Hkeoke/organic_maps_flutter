@@ -29,6 +29,14 @@ class StorageService {
     return _controller.getCountries();
   }
 
+  /// Busca un país/región en todo el árbol de mapas.
+  ///
+  /// Busca recursivamente en todo el árbol (continentes → países → regiones).
+  /// Retorna `null` si no se encuentra.
+  Future<Country?> findCountry(String query) async {
+    return _controller.findCountry(query);
+  }
+
   /// Obtiene solo los países descargados.
   Future<List<Country>> getDownloadedCountries() async {
     final countries = await getCountries();
