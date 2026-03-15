@@ -57,6 +57,9 @@ class OrganicMapView(
     private var organicMaps: app.organicmaps.sdk.OrganicMaps? = null
     private var initializationStarted = false
     private val initLock = Object()
+    
+    // Contador global para evitar destruir referencias si hay múltiples mapas activos
+    private var activeInstancesCount = 0
 
     init {
       try {
@@ -76,6 +79,7 @@ class OrganicMapView(
   private var locationHelper: LocationHelper? = null
   private var storageCallbackSlot: Int = 0
   private var mapReady = false
+  private var isDisposed = false
 
   // ==================== STORAGE CALLBACK ====================
 
@@ -106,6 +110,7 @@ class OrganicMapView(
     methodChannel.setMethodCallHandler(this)
 
     synchronized(initLock) {
+      activeInstancesCount++
       if (organicMaps == null && !initializationStarted) {
         initializationStarted = true
         initializeOrganicMaps()
@@ -151,6 +156,7 @@ class OrganicMapView(
   }
 
   private fun waitForFrameworkAndInitialize() {
+    if (isDisposed) return
     if (organicMaps != null && organicMaps!!.arePlatformAndCoreInitialized()) {
       initializeMapView(organicMaps!!)
     } else {
@@ -251,6 +257,7 @@ class OrganicMapView(
   private fun createLocationModeListener(): LocationState.ModeChangeListener {
     return object : LocationState.ModeChangeListener {
       override fun onMyPositionModeChanged(newMode: Int) {
+        if (isDisposed) return
         // Gestionar LocationHelper según el modo
         when (newMode) {
           LocationState.NOT_FOLLOW_NO_POSITION -> {
@@ -303,9 +310,19 @@ class OrganicMapView(
   override fun getView(): View = containerView
 
   override fun dispose() {
+    isDisposed = true
     methodChannel.setMethodCallHandler(null)
-    LocationState.nativeRemoveListener()
-    RoutingController.get().detach()
+    safeExecute { Framework.nativeRemovePlacePageActivationListener(this) }
+
+    synchronized(initLock) {
+      activeInstancesCount--
+      if (activeInstancesCount <= 0) {
+        activeInstancesCount = 0
+        LocationState.nativeRemoveListener()
+        RoutingController.get().detach()
+        locationHelper?.stop()
+      }
+    }
 
     if (storageCallbackSlot != 0) {
       MapManager.nativeUnsubscribe(storageCallbackSlot)
@@ -313,15 +330,16 @@ class OrganicMapView(
     }
 
     safeExecute {
-      lifecycleRegistry.currentState = androidx.lifecycle.Lifecycle.State.STARTED
-      mapController.onPause(this)
-      lifecycleRegistry.currentState = androidx.lifecycle.Lifecycle.State.CREATED
-      mapController.onStop(this)
-      lifecycleRegistry.currentState = androidx.lifecycle.Lifecycle.State.DESTROYED
-      mapController.onDestroy(this)
+      if (::mapController.isInitialized) {
+        lifecycleRegistry.currentState = androidx.lifecycle.Lifecycle.State.STARTED
+        mapController.onPause(this)
+        lifecycleRegistry.currentState = androidx.lifecycle.Lifecycle.State.CREATED
+        mapController.onStop(this)
+        lifecycleRegistry.currentState = androidx.lifecycle.Lifecycle.State.DESTROYED
+        mapController.onDestroy(this)
+      }
     }
 
-    locationHelper?.stop()
     containerView.removeView(mapView)
   }
 
@@ -507,6 +525,7 @@ class OrganicMapView(
       private val results = mutableListOf<Map<String, Any>>()
 
       override fun onResultsUpdate(results: Array<SearchResult>, timestamp: Long) {
+        if (isDisposed) return
         results.forEach { sr ->
           this.results.add(mapOf(
             "name" to sr.name,
@@ -519,7 +538,9 @@ class OrganicMapView(
       }
 
       override fun onResultsEnd(timestamp: Long) {
-        result.success(this.results)
+        if (!isDisposed) {
+          result.success(this.results)
+        }
         SearchEngine.INSTANCE.removeListener(this)
       }
     }
@@ -1014,8 +1035,11 @@ class OrganicMapView(
 
   /** Envía un método al canal de Flutter en el hilo principal. */
   private fun postToFlutter(method: String, arguments: Any?) {
+    if (isDisposed) return
     containerView.post {
-      methodChannel.invokeMethod(method, arguments)
+      if (!isDisposed) {
+        methodChannel.invokeMethod(method, arguments)
+      }
     }
   }
 
@@ -1031,6 +1055,7 @@ class OrganicMapView(
   /** Fuerza el modo FOLLOW_AND_ROTATE ciclando modos si es necesario. */
   private fun forceNavigationMode() {
     safeExecute {
+      if (isDisposed) return@safeExecute
       var currentMode = LocationState.getMode()
       val targetMode = LocationState.FOLLOW_AND_ROTATE
       var attempts = 0
