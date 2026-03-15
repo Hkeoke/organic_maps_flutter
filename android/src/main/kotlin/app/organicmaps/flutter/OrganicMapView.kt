@@ -197,6 +197,18 @@ class OrganicMapView(
       android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
       android.widget.FrameLayout.LayoutParams.MATCH_PARENT
     ))
+
+    // Iniciar ubicación automáticamente si hay permisos
+    containerView.postDelayed({
+      if (!isDisposed && app.organicmaps.sdk.util.LocationUtils.checkLocationPermission(context)) {
+        try {
+          locationHelper?.start()
+          Log.i(TAG, "Location updates started automatically")
+        } catch (e: Exception) {
+          Log.w(TAG, "Could not start location automatically: ${e.message}")
+        }
+      }
+    }, 500)
   }
 
   // ==================== FACTORIES DE LISTENERS ====================
@@ -788,8 +800,18 @@ class OrganicMapView(
 
   private fun handleStartLocationUpdates(result: MethodChannel.Result) {
     if (app.organicmaps.sdk.util.LocationUtils.checkLocationPermission(context)) {
-      locationHelper?.start()
-      result.success(null)
+      try {
+        locationHelper?.start()
+        // Forzar modo de seguimiento si no está activo
+        val currentMode = LocationState.getMode()
+        if (currentMode == LocationState.NOT_FOLLOW_NO_POSITION) {
+          LocationState.nativeSwitchToNextMode()
+        }
+        result.success(null)
+      } catch (e: Exception) {
+        Log.e(TAG, "Error starting location updates", e)
+        result.error("ERROR", e.message, null)
+      }
     } else {
       result.error("PERMISSION_DENIED", "Location permissions not granted", null)
     }
@@ -852,8 +874,19 @@ class OrganicMapView(
 
   private fun handleSetMapStyle(call: MethodCall, result: MethodChannel.Result) {
     val style = call.argument<String>("style") ?: "defaultLight"
-    MapStyle.set(mapStyleFromString(style))
-    result.success(null)
+    try {
+      val mapStyle = mapStyleFromString(style)
+      MapStyle.set(mapStyle)
+      // Forzar actualización del rendering
+      containerView.post {
+        mapView.invalidate()
+      }
+      Log.i(TAG, "Map style changed to: $style")
+      result.success(null)
+    } catch (e: Exception) {
+      Log.e(TAG, "Error setting map style", e)
+      result.error("ERROR", e.message, null)
+    }
   }
 
   private fun handleGetMapStyle(result: MethodChannel.Result) {
