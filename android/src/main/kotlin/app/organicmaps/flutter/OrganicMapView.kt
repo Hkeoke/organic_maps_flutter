@@ -29,6 +29,7 @@ import app.organicmaps.sdk.downloader.MapManager
 import app.organicmaps.sdk.downloader.CountryItem
 import app.organicmaps.sdk.PlacePageActivationListener
 import app.organicmaps.sdk.widget.placepage.PlacePageData
+import app.organicmaps.sdk.sound.TtsPlayer
 
 /**
  * Platform View que integra el SDK completo de Organic Maps con Flutter.
@@ -209,6 +210,14 @@ class OrganicMapView(
         }
       }
     }, 500)
+
+    // Inicializar TtsPlayer (requiere contexto y debe hacerse tras el framework)
+    try {
+      TtsPlayer.INSTANCE.initialize(context.applicationContext)
+      Log.i(TAG, "TtsPlayer initialized")
+    } catch (e: Exception) {
+      Log.w(TAG, "TtsPlayer initialization failed: ${e.message}")
+    }
   }
 
   // ==================== FACTORIES DE LISTENERS ====================
@@ -408,10 +417,10 @@ class OrganicMapView(
         "isIsolinesEnabled" -> result.success(IsolinesManager.isEnabled())
 
         // TTS
-        "setTtsEnabled" -> result.success(null) // TODO: Implementar con TtsPlayer
-        "isTtsEnabled" -> result.success(false)
-        "setTtsVolume" -> result.success(null)
-        "getTtsVolume" -> result.success(1.0)
+        "setTtsEnabled" -> handleSetTtsEnabled(call, result)
+        "isTtsEnabled"  -> result.success(TtsPlayer.isEnabled())
+        "setTtsVolume"  -> handleSetTtsVolume(call, result)
+        "getTtsVolume"  -> result.success(TtsPlayer.INSTANCE.volume.toDouble())
 
         // Configuración
         "set3dMode" -> handleSet3dMode(call, result)
@@ -859,6 +868,34 @@ class OrganicMapView(
   private fun handleSetIsolinesEnabled(call: MethodCall, result: MethodChannel.Result) {
     IsolinesManager.setEnabled(call.argument<Boolean>("enabled") ?: false)
     result.success(null)
+  }
+
+  private fun handleSetTtsEnabled(call: MethodCall, result: MethodChannel.Result) {
+    val enabled = call.argument<Boolean>("enabled") ?: true
+    try {
+      // Ensure TtsPlayer is initialized before toggling
+      if (!TtsPlayer.isReady()) {
+        TtsPlayer.INSTANCE.initialize(context.applicationContext)
+      }
+      TtsPlayer.setEnabled(enabled)
+      Log.i(TAG, "TTS ${if (enabled) "enabled" else "disabled"}")
+      result.success(null)
+    } catch (e: Exception) {
+      Log.w(TAG, "Error setting TTS enabled: ${e.message}")
+      result.error("TTS_ERROR", e.message, null)
+    }
+  }
+
+  private fun handleSetTtsVolume(call: MethodCall, result: MethodChannel.Result) {
+    val volume = (call.argument<Double>("volume") ?: 1.0).toFloat().coerceIn(0f, 1f)
+    try {
+      TtsPlayer.INSTANCE.setVolume(volume)
+      Log.i(TAG, "TTS volume set to $volume")
+      result.success(null)
+    } catch (e: Exception) {
+      Log.w(TAG, "Error setting TTS volume: ${e.message}")
+      result.error("TTS_ERROR", e.message, null)
+    }
   }
 
   private fun handleSet3dMode(call: MethodCall, result: MethodChannel.Result) {

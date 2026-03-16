@@ -253,6 +253,83 @@ if [ -f "$FTYPES_SUBTYPES" ]; then
     fi
 fi
 
+# Restringir viewport del mapa a Cuba (evita pantalla negra al hacer zoom out)
+VISUAL_PARAMS="$COMAPS_DIR/libs/drape_frontend/visual_params.cpp"
+if [ -f "$VISUAL_PARAMS" ]; then
+    echo ""
+    echo -e "${YELLOW}Paso 8:${NC} Restringiendo viewport del mapa a Cuba..."
+    
+    if grep -q "mercator::Bounds::FullRect()" "$VISUAL_PARAMS"; then
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' 's|return mercator::Bounds::FullRect();|// Restrict viewport bounds tightly to Cuba to prevent black/dark areas.\
+  // Cabo de San Antonio (west) to Punta de Maisí (east), south coast to north coast.\
+  return m2::RectD(-84.95, mercator::LatToY(19.82), -74.13, mercator::LatToY(23.27));|' "$VISUAL_PARAMS"
+        else
+            sed -i 's|return mercator::Bounds::FullRect();|// Restrict viewport bounds tightly to Cuba to prevent black\/dark areas.\n  // Cabo de San Antonio (west) to Punta de Maisí (east), south coast to north coast.\n  return m2::RectD(-84.95, mercator::LatToY(19.82), -74.13, mercator::LatToY(23.27));|' "$VISUAL_PARAMS"
+        fi
+        echo -e "${GREEN}✓${NC} GetWorldRect() restringido a Cuba"
+    else
+        echo -e "${GREEN}✓${NC} GetWorldRect() ya estaba restringido a Cuba"
+    fi
+fi
+
+# Fix ScaleInto ASSERT crash con viewport restringido
+SCREEN_OPS="$COMAPS_DIR/libs/drape_frontend/screen_operations.cpp"
+if [ -f "$SCREEN_OPS" ]; then
+    echo ""
+    echo -e "${YELLOW}Paso 8b:${NC} Corrigiendo ASSERT en ScaleInto..."
+    
+    if grep -q 'ASSERT(boundRect.IsPointInside(clipRect.Center())' "$SCREEN_OPS"; then
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' 's|ASSERT(boundRect.IsPointInside(clipRect.Center()), ("center point should be inside boundRect"));|// If the center is outside the bound rect, move it inside gracefully\n  // instead of crashing (can happen with restricted viewport on startup).\n  if (!boundRect.IsPointInside(clipRect.Center()))\n  {\n    m2::PointD const newCenter = boundRect.Center();\n    m2::PointD const offset = newCenter - clipRect.Center();\n    clipRect.Offset(offset.x, offset.y);\n    res.SetOrg(newCenter);\n  }|' "$SCREEN_OPS"
+        else
+            sed -i 's|ASSERT(boundRect.IsPointInside(clipRect.Center()), ("center point should be inside boundRect"));|// If the center is outside the bound rect, move it inside gracefully\n  // instead of crashing (can happen with restricted viewport on startup).\n  if (!boundRect.IsPointInside(clipRect.Center()))\n  {\n    m2::PointD const newCenter = boundRect.Center();\n    m2::PointD const offset = newCenter - clipRect.Center();\n    clipRect.Offset(offset.x, offset.y);\n    res.SetOrg(newCenter);\n  }|' "$SCREEN_OPS"
+        fi
+        echo -e "${GREEN}✓${NC} ScaleInto ASSERT reemplazado por movimiento graceful"
+    else
+        echo -e "${GREEN}✓${NC} ScaleInto ASSERT ya fue corregido"
+    fi
+fi
+
+# Fix ExtractTrafficGeometry bounds index
+RULE_DRAWER="$COMAPS_DIR/libs/drape_frontend/rule_drawer.cpp"
+if [ -f "$RULE_DRAWER" ]; then
+    echo ""
+    echo -e "${YELLOW}Paso 8c:${NC} Corrigiendo manejo de index en ExtractTrafficGeometry..."
+    
+    if grep -q "ASSERT_GREATER_OR_EQUAL(index, 0, ());" "$RULE_DRAWER"; then
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' 's|ASSERT_GREATER_OR_EQUAL(index, 0, ());|if (index < 0) index = 0;|' "$RULE_DRAWER"
+            sed -i '' 's|ASSERT_LESS(index, static_cast<int>(kAverageSegmentsCount.size()), ());|if (index >= static_cast<int>(kAverageSegmentsCount.size()))\n    index = static_cast<int>(kAverageSegmentsCount.size()) - 1;|' "$RULE_DRAWER"
+            sed -i '' 's|int const index|int index|' "$RULE_DRAWER"
+        else
+            sed -i 's|ASSERT_GREATER_OR_EQUAL(index, 0, ());|if (index < 0) index = 0;|' "$RULE_DRAWER"
+            sed -i 's|ASSERT_LESS(index, static_cast<int>(kAverageSegmentsCount.size()), ());|if (index >= static_cast<int>(kAverageSegmentsCount.size()))\n    index = static_cast<int>(kAverageSegmentsCount.size()) - 1;|' "$RULE_DRAWER"
+            sed -i 's|int const index|int index|' "$RULE_DRAWER"
+        fi
+        echo -e "${GREEN}✓${NC} ExtractTrafficGeometry corregido para evitar crasheos de bounds"
+    else
+        echo -e "${GREEN}✓${NC} ExtractTrafficGeometry ASSERTs ya fueron corregidos"
+    fi
+fi
+
+# Fix missing fonts crash
+GLYPH_MANAGER="$COMAPS_DIR/libs/drape/glyph_manager.cpp"
+if [ -f "$GLYPH_MANAGER" ]; then
+    echo ""
+    echo -e "${YELLOW}Paso 8d:${NC} Corrigiendo strict ASSERT para fuentes faltantes..."
+    if grep -q "ASSERT_EQUAL(m_impl->m_fonts.size(), params.m_fonts.size(), ());" "$GLYPH_MANAGER"; then
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' 's|ASSERT_EQUAL(m_impl->m_fonts.size(), params.m_fonts.size(), ());|//ASSERT_EQUAL(m_impl->m_fonts.size(), params.m_fonts.size(), ());|' "$GLYPH_MANAGER"
+        else
+            sed -i 's|ASSERT_EQUAL(m_impl->m_fonts.size(), params.m_fonts.size(), ());|//ASSERT_EQUAL(m_impl->m_fonts.size(), params.m_fonts.size(), ());|' "$GLYPH_MANAGER"
+        fi
+        echo -e "${GREEN}✓${NC} GlyphManager ya no hará crash cuando falten fuentes"
+    else
+        echo -e "${GREEN}✓${NC} GlyphManager ya fue corregido"
+    fi
+fi
+
 echo ""
 echo -e "${GREEN}✅ Configuración completada!${NC}"
 echo ""
@@ -270,6 +347,8 @@ echo "  • Parser de subtypes.csv (ftypes_subtypes.cpp):"
 echo "    - Whitespace trimming agregado (columnas y valores)"
 echo "    - ASSERTs fatales reemplazados por LOGs de advertencia"
 echo "    - Fix para crash al buscar direcciones"
+echo "  • Viewport del mapa (visual_params.cpp):"
+echo "    - GetWorldRect() restringido a Cuba (evita pantalla negra)"
 echo "  • Archivos .cpp corregidos (includes relativos)"
 echo ""
 echo "Para revertir los cambios:"

@@ -46,12 +46,16 @@ android {
     }
 
     sourceSets {
-        main.java.srcDirs += "src/main/kotlin"
-        main.java.srcDirs += "sdk/src/main/java"
-        main.res.srcDirs += "sdk/src/main/res"
-        main.assets.srcDirs += "sdk/src/main/assets"
-        main.manifest.srcFile "sdk/src/main/AndroidManifest.xml"
-        test.java.srcDirs += "src/test/kotlin"
+        main {
+            java.srcDirs += ["src/main/kotlin", "sdk/src/main/java"]
+            res.srcDirs += "sdk/src/main/res"
+            assets.srcDirs += "sdk/src/main/assets"
+            assets.exclude "styles/**", "styles"
+            manifest.srcFile "sdk/src/main/AndroidManifest.xml"
+        }
+        test {
+            java.srcDirs += "src/test/kotlin"
+        }
     }
 
     defaultConfig {
